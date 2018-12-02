@@ -1,0 +1,10 @@
+pub mod altars;
+pub mod bosses;
+pub mod dungeons;
+pub mod fountains;
+pub mod gates;
+pub mod paths;
+pub mod shop_areas;
+pub mod stations;
+pub mod area_settings;
+pub mod gambling_den;

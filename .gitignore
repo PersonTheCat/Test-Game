@@ -1,0 +1,12 @@
+/target
+/.idea
+/.metadata
+
+**/*.rs.bk
+
+*.eml
+*.iml
+*.txt
+Cargo.lock
+.project
+.classpath
