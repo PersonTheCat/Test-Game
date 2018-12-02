@@ -2,6 +2,7 @@
 #![feature(duration_as_u128)]
 #![feature(drain_filter)]
 #![feature(vec_remove_item)]
+#![feature(rustc_private)]
 #![allow(dead_code, unused_doc_comments)] // To-do: conform
 
 #[macro_use]
@@ -62,6 +63,8 @@ use std::{
 extern crate serenity;
 #[cfg(feature = "discord")]
 use util::discord_bot::Bot;
+#[cfg(feature = "remote_clients")]
+extern crate parking_lot;
 
 /**
  * Settings.
@@ -70,7 +73,7 @@ use util::discord_bot::Bot;
 const UPDATES_PER_SECOND: u16 = 10;
 const NUM_SPACES: u8 = 50;
 const MAX_SHORT_MESSAGES: usize = 3;
-pub const TEXT_SPEED: u64 = 3000;
+pub const TEXT_SPEED: u64 = 500;
 pub const TEMP_DIALOGUE_DURATION: u64 = 20_000;
 const PRINT_FRAMES: bool = false;
 const CHEATS_ENABLED: bool = true;
@@ -252,7 +255,7 @@ fn handle_player_commands(message: &GameMessage)
 {
     let response =
 
-    var_access::access_player_meta_sender(message.channel_info, | meta |
+    var_access::access_player_meta_sender(&message.channel_info, | meta |
     {
         process_options(meta.player_id, &message.message);
     });

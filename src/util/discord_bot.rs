@@ -7,7 +7,7 @@ use serenity::model::user::User;
 use std::sync::mpsc::Sender;
 use std::fs::OpenOptions;
 use std::io::prelude::*;
-use std::sync::Mutex;
+use parking_lot::Mutex;
 use std::fs::File;
 use std::io;
 
@@ -22,14 +22,20 @@ const TOKEN_FILE: &'static str = "discord_token.txt";
 const CHANNELS_FILE: &'static str = "discord_channels.txt";
 const COMMAND_INDICATOR: &'static str = "!";
 
+/**
+ * This just determines whether to send a new message or
+ * edit a previous message. Needs some work for clarity.
+ */
 pub fn handle_discord_message(channel: ChannelId, _user: UserId, message: &str)
 {
-    match channel.messages(| messages |
+    match channel.messages(| m | m.most_recent())
     {
-        messages.most_recent()
-    }){
         Ok(ref mut matches) =>
         {
+            /**
+             * No messages found -> send a new one.
+             * Last message somehow came from a user -> same.
+             */
             if matches.len() == 0 || !matches[0].author.bot
             {
                 send_message(channel, message);
@@ -39,6 +45,16 @@ pub fn handle_discord_message(channel: ChannelId, _user: UserId, message: &str)
             let mut formatted = String::new();
             let previous = matches[0].content.to_owned();
 
+            /**
+             * Following this pattern:
+             * ```
+             * previous contents
+             * new contents
+             * ```
+             *
+             * To-do: It may be simpler to just insert the
+             * new message before the closing backticks.
+             */
             formatted += "```";
 
             if previous.starts_with("```")
@@ -59,6 +75,11 @@ pub fn handle_discord_message(channel: ChannelId, _user: UserId, message: &str)
     }
 }
 
+/**
+ * To-do: Send these messages as embeds. Seeing as
+ * the Discord functionality probably *cannot* get
+ * very good, this may not happen.
+ */
 fn send_message(channel: ChannelId, message: &str)
 {
     if let Err(_) = channel.say(standard_formatting(message))
@@ -69,21 +90,25 @@ fn send_message(channel: ChannelId, message: &str)
 
 fn standard_formatting(message: &str) -> String
 {
-    let mut formatted = String::new();
-    formatted += "```";
-    formatted += message;
-    formatted += "```";
-    formatted
+    format!("```\n{}\n```", message)
 }
 
 pub struct Bot
 {
+    /**
+     * These need to be individually stored in mutexes in
+     * order for the Discord client to hold them correctly.
+     */
     sender: Mutex<Sender<GameMessage>>,
     channels: Mutex<Vec<u64>>
 }
 
 impl Bot
 {
+    /**
+     * Functions related to initializing the bot.
+     */
+
     pub fn load(sender: Sender<GameMessage>) -> bool
     {
         let token = match Self::load_token()
@@ -94,7 +119,8 @@ impl Bot
 
         let channels = Self::load_channels();
         let handler = Bot::new(sender, channels);
-        let _discord = Client::new(&token, handler)
+
+        Client::new(&token, handler)
             .expect("Error creating Discord client.")
             .start()
             .expect("Error connecting to Discord's servers.");
@@ -145,16 +171,24 @@ impl Bot
         }
     }
 
+    fn new(sender: Sender<GameMessage>, channels: Vec<u64>) -> Bot
+    {
+        Bot { sender: Mutex::new(sender), channels: Mutex::new(channels) }
+    }
+
+    /**
+     * Miscellaneous tools for the bot to use.
+     */
+
     fn is_registered(&self, channel: u64) -> bool
     {
         let channels = self.channels.lock().unwrap();
         channels.contains(&channel)
     }
 
-    fn new(sender: Sender<GameMessage>, channels: Vec<u64>) -> Bot
-    {
-        Bot { sender: Mutex::new(sender), channels: Mutex::new(channels) }
-    }
+    /**
+     * Commands
+     */
 
     fn process_commands(&self, cmd: &str, _author: &User, channel: u64) -> Option<String>
     {
@@ -250,6 +284,12 @@ impl EventHandler for Bot
     }
 }
 
+/**
+ * Serves the specific purpose of opening the file
+ * in write / append mode for new contents to be
+ * added to previous contents, or write-only mode
+ * for new contents to be added to nothing.
+ */
 fn open_or_create(path: &str) -> File
 {
     let file = OpenOptions::new()

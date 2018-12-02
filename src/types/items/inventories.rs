@@ -419,7 +419,7 @@ impl Inventory
                         let inventory = entity.get_inventory()
                             .expect("Player does not have an inventory.");
 
-                        if !(inventory.current_size() >= slot_num && slot_num > 0) // Potential clarity improvements needed.
+                        if inventory.current_size() <= slot_num || slot_num == 0
                         {
                             ::add_short_message(player, "Invalid item #.");
                             return;
@@ -457,8 +457,8 @@ impl Inventory
                     }
                     let item_num = match args[0].parse::<usize>()
                     {
-                        Ok(num) => num - 1,
-                        Err(_e) =>
+                        Ok(num) if num > 0 => num - 1,
+                        _ =>
                         {
                             ::add_short_message(player, "Not sure what you're trying to do, there.");
                             return;
@@ -467,9 +467,15 @@ impl Inventory
 
                     var_access::access_player_context(player, | _, _, a, e |
                     {
-                        e.get_inventory()
-                            .expect("Player no longer has an inventory.")
-                            .on_use_item(item_num, Some(e), None, a);
+                        let inventory = e.get_inventory()
+                            .expect("Player no longer has an inventory.");
+
+                        if inventory.current_size() <= item_num
+                        {
+                            ::add_short_message(player, "Invalid item #.");
+                            return;
+                        }
+                        inventory.on_use_item(item_num, Some(e), None, a);
                     })
                     .expect("Player data no longer exists.");
                 }),

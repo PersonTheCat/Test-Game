@@ -5,3 +5,5 @@ pub mod directions;
 pub mod new_player_options;
 #[cfg(feature = "discord")]
 pub mod discord_bot;
+#[cfg(feature = "remote_clients")]
+pub mod server_host;

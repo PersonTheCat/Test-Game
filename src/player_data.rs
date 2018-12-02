@@ -36,7 +36,7 @@ impl PlayerMeta
 {
     pub fn update_message(&mut self)
     {
-        ::send_message_to_channel(self.channel, &mut self.reusable_message, 0);
+        ::send_message_to_channel(&self.channel, &mut self.reusable_message, 0);
     }
 
     pub fn get_accessor(&self) -> EntityAccessor
@@ -151,7 +151,7 @@ pub fn new_player_event(message: &GameMessage)
 
     let new = PlayerMeta
     {
-        channel: message.channel_info,
+        channel: message.channel_info.clone(),
         player_id,
         coordinates: (0, 0, 0),
         area_records: HashMap::new(),

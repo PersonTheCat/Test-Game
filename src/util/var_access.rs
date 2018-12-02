@@ -61,14 +61,14 @@ pub fn access_entity<T, F>(accessor: EntityAccessor, callback: F) -> Option<T>
     .expect("Area no longer exists.")
 }
 
-pub fn access_player_meta_sender<T, F>(channel: ::ChannelInfo, callback: F) -> Option<T>
+pub fn access_player_meta_sender<T, F>(channel: &::ChannelInfo, callback: F) -> Option<T>
     where F: FnOnce(&PlayerMeta) -> T
 {
     unsafe { if let Some(ref registry) = PLAYER_META
     {
         let player = registry
             .iter()
-            .find(| p | p.channel == channel);
+            .find(| p | p.channel == *channel);
 
         match player
         {
@@ -144,7 +144,7 @@ pub fn access_player<T, F>(player_id: usize, callback: F) -> Option<T>
     access_player_context(player_id, | _, _, _, e | callback(e))
 }
 
-pub fn get_player_for_sender(channel: ::ChannelInfo) -> Option<usize>
+pub fn get_player_for_sender(channel: &::ChannelInfo) -> Option<usize>
 {
     access_player_meta_sender(channel, | p | p.player_id)
 }

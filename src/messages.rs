@@ -7,6 +7,8 @@ use var_access;
 use util::discord_bot;
 #[cfg(feature = "discord")]
 use serenity::model::id::{ ChannelId, UserId };
+#[cfg(feature = "remote_clients")]
+use util::server_host;
 
 use regex::Regex;
 
@@ -25,7 +27,7 @@ pub fn send_message_to_player(id: usize, typ: MessageComponent, message: &str, m
             Options => { meta.reusable_message.options = message.to_string() }
         };
 
-        send_message_to_channel(meta.channel, &mut meta.reusable_message, ms_speed)
+        send_message_to_channel(&meta.channel, &mut meta.reusable_message, ms_speed)
     })
     .expect("Player data no longer exists.")
 }
@@ -79,12 +81,12 @@ pub fn send_short_message(id: usize, message: &str) -> DelayHandler
     {
         meta.reusable_message.add_to_general(format!("* {}\n", message));
 
-        send_message_to_channel(meta.channel, &mut meta.reusable_message, 0)
+        send_message_to_channel(&meta.channel, &mut meta.reusable_message, 0)
     })
     .expect("Player data no longer exists.")
 }
 
-pub fn send_message_to_channel(channel: ChannelInfo, message: &mut ReusableMessage, ms_speed: u64) -> DelayHandler
+pub fn send_message_to_channel(channel: &ChannelInfo, message: &mut ReusableMessage, ms_speed: u64) -> DelayHandler
 {
     separate_messages(channel);
 
@@ -141,7 +143,7 @@ pub fn send_message_to_channel(channel: ChannelInfo, message: &mut ReusableMessa
     DelayHandler::new(delay_ms)
 }
 
-fn single_message(channel: ChannelInfo, message: &ReusableMessage) -> DelayHandler
+fn single_message(channel: &ChannelInfo, message: &ReusableMessage) -> DelayHandler
 {
     match channel
     {
@@ -151,7 +153,10 @@ fn single_message(channel: ChannelInfo, message: &ReusableMessage) -> DelayHandl
          * interface is implemented.
          */
         #[cfg(feature = "remote_clients")]
-        Remote => { panic!("Error: Remote interfaces are not yet implemented."); },
+        Remote(ref username) =>
+        {
+            server_host::send_message_to_client(username, &message.format());
+        },
         /**
          * Calls a rudimentary function that just
          * determines whether to edit a previous
@@ -169,7 +174,7 @@ fn single_message(channel: ChannelInfo, message: &ReusableMessage) -> DelayHandl
 /**
  * Same as single message, but uses DelayedEvents.
  */
-fn schedule_message(channel: ChannelInfo, message: &str, delay_ms: u64)
+fn schedule_message(channel: &ChannelInfo, message: &str, delay_ms: u64)
 {
     let owned = message.to_string();
 
@@ -188,7 +193,14 @@ fn schedule_message(channel: ChannelInfo, message: &str, delay_ms: u64)
             });
         },
         #[cfg(feature = "remote_clients")]
-        Remote => { panic!("Error: Remote interfaces are not yet implemented."); },
+        Remote(ref username) =>
+        {
+            let user_owned = username.clone();
+            DelayedEvent::no_flags(delay_ms, move ||
+            {
+                server_host::send_message_to_client(&user_owned, &owned);
+            });
+        },
         #[cfg(feature = "discord")]
         Discord(channel_id, user_id) =>
         {
@@ -204,7 +216,7 @@ fn schedule_message(channel: ChannelInfo, message: &str, delay_ms: u64)
  * Only print one string. Terminal animations make
  * these print lines distractingly visible.
  */
-fn separate_messages(channel: ChannelInfo)
+fn separate_messages(channel: &ChannelInfo)
 {
     match channel
     {
@@ -219,11 +231,16 @@ fn separate_messages(channel: ChannelInfo)
             println!("{}", print);
         },
         /**
-         * Panic until / unless a remote client
-         * interface is implemented.
+         * Handle remote users in the same way as local
+         * users, but pass their info through the host.
          */
         #[cfg(feature = "remote_clients")]
-        Remote => { panic!("Error: Remote interfaces are not yet implemented."); },
+        Remote(ref username) =>
+        {
+            let mut print = String::new();
+            for _ in 0..::NUM_SPACES { print += "\n"; }
+            server_host::send_message_to_client(username, &print);
+        },
         /**
          * Find and delete the most recent message
          * if it was sent by the bot.
@@ -353,14 +370,13 @@ pub enum MessageComponent
     Options
 }
 
-#[derive(Copy, Clone, Eq, PartialEq)]
+#[derive(Clone, Eq, PartialEq)]
 pub enum ChannelInfo
 {
     Local,
 
-    // This will come later.
     #[cfg(feature = "remote_clients")]
-    Remote,
+    Remote(String),
 
     #[cfg(feature = "discord")]
     Discord(ChannelId, UserId)
