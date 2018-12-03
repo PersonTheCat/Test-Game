@@ -17,9 +17,10 @@ use GameMessage;
  */
 
 /** Slightly faster than the main game loop. */
-const REFRESH_RATE: u64 = (::MS_BETWEEN_UPDATES * 2 / 3) as u64;
-const MSG_SIZE: usize = 128;
+const REFRESH_RATE: u64 = 50;//(::MS_BETWEEN_UPDATES * 2 / 3) as u64;
+const MSG_SIZE: usize = 256;
 const MAX_USERS: usize = 8;
+const MAX_VISITORS: usize = 8;
 
 /** These users have not yet logged in. */
 type Visitors = Vec<(SocketAddr, TcpStream)>;
@@ -74,26 +75,42 @@ fn start_server(listener: TcpListener, server_tx: Sender<String>, server_rx: Rec
     {
         if let Ok((mut socket, address)) = listener.accept()
         {
+            /**
+             * Hold visitors in a separate array from established
+             * clients. They will get their own threads once they
+             * have been registered successfully and have received
+             * `LOGIN_OK` as well as a `TOKEN` for communicating
+             * with the game.
+             */
             println!("Received a connection from {}.", address);
-            let user_tx = server_tx.clone();
 
-            let socket_clone = socket.try_clone()
-                .expect("Failed to clone client info.");
+            if visitors.len() > MAX_VISITORS
+            {
+                let msg = format!("LOGIN_ERR\nREASON|MAX_VISITORS");
+                write_directly(&msg, &mut socket)
+                    .expect("Error writing to socket.")
+            }
 
-            // The user's IP will serve as a temporary identifier.
-            write_directly(&format!("ESTABLISH\nADDR|{}", address), &mut socket);
+            /** The user's IP will serve as a temporary identifier. */
+            write_directly(&format!("ESTABLISH\nADDR|{}", address), &mut socket)
+                .expect("Error writing to socket.");
 
-            visitors.push((address.clone(), socket_clone));
-
-            spawn_client_thread(socket, address, user_tx);
+            visitors.push((address, socket));
         }
+
+        /**
+         * Process incoming messages from visitors in the current thread.
+         * Sever connections when messages can't be read.
+         */
+        visitors.drain_filter(| (address, socket) |
+            handle_reads(socket, &address, &server_tx).is_err());
 
         if let Ok(msg) = server_rx.try_recv()
         {
-            match handle_incoming_message(&msg, &mut visitors, &mut clients, &mut tokens, &game_tx)
+            match handle_incoming_message(&msg, &mut visitors, &mut clients, &mut tokens, &server_tx, &game_tx)
             {
                 Ok(_o) => (), //println!("Ok: {}", o),
-                Err(_e) => (), //println!("Err: {}", e)
+                Err(e) => println!("Err: {}", e)
             };
         }
 
@@ -105,30 +122,39 @@ fn spawn_client_thread(mut socket: TcpStream, address: SocketAddr, user_tx: Send
 {
     thread::spawn(move || loop
     {
-        let mut buf = vec![0; MSG_SIZE];
-
-        match socket.read_exact(&mut buf)
+        if handle_reads(&mut socket, &address, &user_tx).is_err()
         {
-            Ok(_) =>
-            {
-                let msg: Vec<u8> = buf.into_iter()
-                    .take_while(| b | *b != 0)
-                    .collect();
-                let msg = String::from_utf8(msg)
-                    .expect("Client send an invalid utf8 message.");
-
-                //println!("{}: {:?}", address, msg);
-                user_tx.send(msg)
-                    .expect("Failed to send user message");
-            }
-            Err(ref e) if e.kind() == WouldBlock => continue,
-            Err(_) => { println!("Closing connection with: {}.", address); break; }
-        }
+            break;
+        };
         sleep();
     });
 }
 
-fn handle_incoming_message(msg: &str, visitors: &mut Visitors, clients: &mut Clients, tokens: &mut Tokens, game_tx: &Sender<GameMessage>) -> Result<&'static str, &'static str>
+fn handle_reads(socket: &mut TcpStream, address: &SocketAddr, server_tx: &Sender<String>) -> io::Result<()>
+{
+    let mut buf = vec![0; MSG_SIZE];
+
+    match socket.read(&mut buf)
+    {
+        Ok(_) =>
+        {
+            let msg: Vec<u8> = buf.into_iter()
+                .take_while(| b | *b != 0)
+                .collect();
+            let msg = String::from_utf8(msg)
+                .expect("Client send an invalid utf8 message.");
+
+//            println!("{}: {:?}", address, msg.replace("\n", "|"));
+            server_tx.send(msg)
+                .expect("Failed to send user message");
+        }
+        Err(ref e) if e.kind() == WouldBlock => (),
+        Err(e) => { println!("Closing connection with: {}.", address); return Err(e); }
+    }
+    Ok(())
+}
+
+fn handle_incoming_message(msg: &str, visitors: &mut Visitors, clients: &mut Clients, tokens: &mut Tokens, server_tx: &Sender<String>, game_tx: &Sender<GameMessage>) -> Result<&'static str, &'static str>
 {
     let mut lines = msg.lines();
 
@@ -142,7 +168,7 @@ fn handle_incoming_message(msg: &str, visitors: &mut Visitors, clients: &mut Cli
     {
         "OUTGOING" => outgoing_message(lines, clients),
         "STANDARD" => standard_message(lines, tokens, game_tx),
-        "REGISTER" => register_user(lines, visitors, clients, tokens),
+        "REGISTER" => register_user(lines, visitors, clients, tokens, server_tx),
         _ => {Err("")}
     }
 }
@@ -241,7 +267,7 @@ fn standard_message(mut lines: Lines, tokens: &Tokens, game_tx: &Sender<GameMess
  * ```
  * To-do: Include a password.
  */
-fn register_user(mut lines: Lines, visitors: &mut Visitors, clients: &mut Clients, tokens: &mut Tokens) -> Result<&'static str, &'static str>
+fn register_user(mut lines: Lines, visitors: &mut Visitors, clients: &mut Clients, tokens: &mut Tokens, server_tx: &Sender<String>) -> Result<&'static str, &'static str>
 {
     let username = match lines.next()
     {
@@ -294,12 +320,22 @@ fn register_user(mut lines: Lines, visitors: &mut Visitors, clients: &mut Client
             token
         );
 
+        let clone = clone_client_info(&new_client);
+        spawn_client_thread(clone.1, clone.0, server_tx.clone());
+
         clients.insert(username.clone(), new_client);
         write_to_client(&response, &username, clients);
         tokens.insert(token, username);
 
         Ok("Client registered successfully.")
     }
+}
+
+fn clone_client_info(client: &(SocketAddr, TcpStream)) -> (SocketAddr, TcpStream)
+{
+    let socket_clone = client.1.try_clone()
+        .expect("Unable to clone client info.");
+    (client.0.clone(), socket_clone)
 }
 
 fn write_to_client(msg: &str, username: &str, clients: &mut Clients)
@@ -346,24 +382,9 @@ fn write_to_visitor(msg: &str, address: SocketAddr, visitors: &mut Visitors)
  */
 fn write_directly(msg: &str, stream: &mut TcpStream) -> Result<(), io::Error>
 {
-    if msg.len() == 0 { return Ok(()) }
+    stream.write(msg.as_bytes())?;
+    stream.flush().expect("We'll see about that!");
 
-    let mut bytes = msg.to_string().into_bytes();
-
-    while bytes.len() > MSG_SIZE
-    {
-        let mut buf = vec![0; MSG_SIZE];
-        for i in 0..MSG_SIZE
-        {
-            buf[i] = bytes.remove(0);
-        }
-        stream.write_all(&buf)?;
-    }
-    if bytes.len() > 0
-    {
-        bytes.resize(MSG_SIZE, 0);
-        stream.write_all(&bytes)?;
-    }
     Ok(())
 }
 

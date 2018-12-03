@@ -124,6 +124,7 @@ pub fn send_message_to_channel(channel: &ChannelInfo, message: &mut ReusableMess
     }
 
     let mut main_info = String::new();
+    correct_server_spacing(channel, &mut main_info);
     if message.options.len() > 0
     {
         main_info += &message.options;
@@ -135,6 +136,7 @@ pub fn send_message_to_channel(channel: &ChannelInfo, message: &mut ReusableMess
     }
     if main_info.len() > 0
     {
+        correct_server_spacing(channel, &mut main_info);
         main_info += "\n";
         delay_ms += ms_speed;
         schedule_message(channel, &main_info, delay_ms);
@@ -143,19 +145,24 @@ pub fn send_message_to_channel(channel: &ChannelInfo, message: &mut ReusableMess
     DelayHandler::new(delay_ms)
 }
 
+#[cfg(feature = "remote_clients")]
+fn correct_server_spacing(channel: &ChannelInfo, msg: &mut String)
+{
+    if let Remote(_) = channel { *msg += "\n"; }
+}
+
+#[cfg(not(feature = "remote_clients"))]
+fn correct_server_spacing(_channel: &ChannelInfo, _msg: &mut String) {}
+
 fn single_message(channel: &ChannelInfo, message: &ReusableMessage) -> DelayHandler
 {
     match channel
     {
-        Local => { println!("{}", message.format()); }
-        /**
-         * Panic until / unless a remote client
-         * interface is implemented.
-         */
+        Local => println!("{}", message.format()),
         #[cfg(feature = "remote_clients")]
         Remote(ref username) =>
         {
-            server_host::send_message_to_client(username, &message.format());
+            server_host::send_message_to_client(username, &(message.format() + "\n\n"));
         },
         /**
          * Calls a rudimentary function that just
@@ -206,7 +213,7 @@ fn schedule_message(channel: &ChannelInfo, message: &str, delay_ms: u64)
         {
             DelayedEvent::no_flags(delay_ms, move ||
             {
-                discord_bot::handle_discord_message(channel_id, user_id, &owned);
+                discord_bot::handle_discord_message(channel_id, *user_id, &owned);
             });
         }
     };

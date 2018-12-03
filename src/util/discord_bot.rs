@@ -26,7 +26,7 @@ const COMMAND_INDICATOR: &'static str = "!";
  * This just determines whether to send a new message or
  * edit a previous message. Needs some work for clarity.
  */
-pub fn handle_discord_message(channel: ChannelId, _user: UserId, message: &str)
+pub fn handle_discord_message(channel: &ChannelId, _user: UserId, message: &str)
 {
     match channel.messages(| m | m.most_recent())
     {
