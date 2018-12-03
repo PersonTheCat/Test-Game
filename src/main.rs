@@ -65,6 +65,10 @@ extern crate serenity;
 use util::discord_bot::Bot;
 #[cfg(feature = "remote_clients")]
 extern crate parking_lot;
+#[cfg(feature = "remote_clients")]
+extern crate yyid;
+#[cfg(feature = "remote_clients")]
+use util::server_host;
 
 /**
  * Settings.
@@ -181,7 +185,8 @@ fn handle_inputs() -> Receiver<GameMessage>
 {
     let (tx , rx) = mpsc::channel();
     handle_stdio(tx.clone());
-    handle_discord(tx);
+    handle_discord(tx.clone());
+    handle_server(tx);
     rx
 }
 
@@ -211,17 +216,20 @@ fn handle_stdio(tx: Sender<GameMessage>)
 #[cfg(feature = "discord")]
 fn handle_discord(tx: Sender<GameMessage>)
 {
-    thread::spawn(move ||
-    {
-        if Bot::load(tx)
-        {
-            println!("\nDiscord bot loaded successfully.");
-        }
-    });
+    thread::spawn(move || Bot::load(tx));
 }
 
 #[cfg(not(feature = "discord"))]
 fn handle_discord(_tx: Sender<GameMessage>) {}
+
+#[cfg(feature = "remote_clients")]
+fn handle_server(tx: Sender<GameMessage>)
+{
+    thread::spawn(move || server_host::init_listener(tx));
+}
+
+#[cfg(not(feature = "remote_clients"))]
+fn handle_server(_tx: Sender<GameMessage>) {}
 
 pub struct GameMessage
 {

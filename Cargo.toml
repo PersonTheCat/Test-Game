@@ -8,7 +8,7 @@ authors = ["PersonTheCat <33143148+PersonTheCat@users.noreply.github.com>"]
 
 default = ["remote_clients"]
 discord = ["serenity", "parking_lot"]
-remote_clients = []
+remote_clients = ["yyid"]
 
 [dependencies]
 
@@ -19,4 +19,5 @@ lazy_static = "1.2.0"
 regex = "1.0.6"
 serenity = { version = "0.5.11", optional = true }
 parking_lot = { version = "0.6.0", optional = true }
+yyid = { version = "*", optional = true }
 test_game_derive = { path = "../test_game_derive" }

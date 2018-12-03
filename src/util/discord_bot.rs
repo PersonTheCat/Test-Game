@@ -109,12 +109,12 @@ impl Bot
      * Functions related to initializing the bot.
      */
 
-    pub fn load(sender: Sender<GameMessage>) -> bool
+    pub fn load(sender: Sender<GameMessage>)
     {
         let token = match Self::load_token()
         {
             Some(t) => t,
-            None => return false
+            None => return
         };
 
         let channels = Self::load_channels();
@@ -125,7 +125,7 @@ impl Bot
             .start()
             .expect("Error connecting to Discord's servers.");
 
-        true
+        println!("\nDiscord bot loaded successfully.");
     }
 
     fn load_token() -> Option<String>
