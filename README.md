@@ -11,7 +11,7 @@ Test-Game is a text-based game designed with a few major goals in mind:
 
 Beyond that, I had a few personal goals with this project:
 - First and foremost, to learn Rust. This means that project was started when I had almost no knowledge of the language, outside of a small, 200-300 line demo I wrote beforehand.
-- To improve my programming skills by exploring new challenges and pushing myself to do things I hadn't done in prior projects. I'm an amature programmer with less than 10-11 months of experience of coding in my free time only and learning a language with stricter guidelines than Java, JavaScript, or Kotlin is an important milestone in my own development.
+- To improve my programming skills by exploring new challenges and pushing myself to do things I hadn't done in prior projects. I'm an amature programmer with less than 10-11 months of experience of coding in my free time only. Learning a language with stricter guidelines than Java, JavaScript, or Kotlin is an important milestone in my own development.
 
 Initially, this project was intended to span no more than 4,000-5,000 LOC; however, I wound up developing certain aspects of the game to a level that I had not anticipated. At the time of this writing, we're at nearly 12k LOC, including the main project and its dependencies, which are also available here on GitHub. As such, it's really unclear how much further this project will develop. I have some more ideas for content in the game, but content is not my primary concern. I'm mostly worried about creating a rudimentary engine which can be used to *produce* new content.
 
