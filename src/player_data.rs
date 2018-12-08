@@ -30,6 +30,7 @@ pub struct PlayerMeta
     pub name: String,
     pub god: String,
     pub class: Class,
+    pub active: bool,
     pub reusable_message: ReusableMessage
 }
 
@@ -160,6 +161,7 @@ pub fn new_player_event(message: &GameMessage)
         name: String::from("New Player"),
         god: String::from("Godless heathen"),
         class: Melee,
+        active: true,
         reusable_message: ReusableMessage::new()
     };
     register_player_meta(new);

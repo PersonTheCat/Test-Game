@@ -14,7 +14,7 @@ use rand::{ thread_rng, Rng };
  * cleaner just to keep all related text and code in
  * one location.
  *
- * ## Text formatting info:
+ * # Text formatting info:
  *
  * The `§` character will handle automatically inserting
  * new lines, whereas the `∫` character splits the text up
@@ -36,7 +36,7 @@ pub fn choose<T>(a: &[T]) -> &T
         .expect("You need to use thread_rng().choose() for arrays where len < 1.")
 }
 
-pub fn auto_break(text: &str) -> String
+pub fn auto_break(indent: u8, text: &str) -> String
 {
     let mut chars: Vec<char> = text.chars().collect();
     if chars.len() <= LINE_LENGTH { return text.to_string(); }
@@ -46,7 +46,8 @@ pub fn auto_break(text: &str) -> String
     {
         let end = end_of_line(start_at, &chars);
         chars[end] = '\n';
-        start_at = end + 1;
+        for _ in 0..indent { chars.insert(end + 1, ' '); }
+        start_at = end + 1 + indent as usize;
     }
     chars.into_iter().collect()
 }
@@ -77,41 +78,6 @@ fn get_last_char(ch: char, text: &[char]) -> usize
     }
     text.len()
 }
-
-///** Faster; does not support special characters. */
-//pub fn auto_break_old(text: &str) -> String
-//{
-//    let mut ret = text.to_string();
-//    if ret.len() <= ::LINE_LENGTH { return ret; }
-//
-//    let mut start_at = 0;
-//    while start_at < text.len() - ::LINE_LENGTH
-//    {
-//        let final_space = end_of_line(start_at,&ret);
-//        ret.insert(final_space + 1, '\n');
-//        start_at += final_space;
-//    }
-//    ret
-//}
-//
-//fn end_of_line(start_at: usize, text: &str) -> usize
-//{
-//    let line = &text[start_at..(start_at + ::LINE_LENGTH)];
-//    get_last_char(' ', line)
-//}
-//
-//fn get_last_char(ch: char, text: &str) -> usize
-//{
-//    let chars = text
-//        .char_indices()
-//        .rev();
-//
-//    for (i, c) in chars
-//    {
-//        if c == ch { return i; }
-//    }
-//    text.len()
-//}
 
 pub fn apply_replacements(text: &str, replacements: &[(&str, String)]) -> String
 {
@@ -154,12 +120,12 @@ fn tuples_to_vec(tuples: &[(&str, &str)]) -> Vec<String>
 
 pub const CELTIC_GODS: [(&str, &str); 6] =
 [
-    ("Danu", "Matriarch of the Tuatha Dé Danann;\ncaretaker of the Earth."),
-    ("Ogma", "God of eloquence and learning, master of\nspeech and language."),
-    ("Epona", "Goddess of fertility, maternity, protector\nof horses, horse breeding, prosperity, dogs,\nhealing springs, crops."),
-    ("Arwan", "god of the underground; kingdom of the dead.\nEvoker of revenge, terror, and war."),
-    ("Scathach", "Goddess of shadows and destruction,\npatroness of blacksmiths, healing, magic, prophecy,\nand martial arts."),
-    ("Merlin", "The great sorcerer, druid, and magician;\nmaster of illusion, shape-shifting, healing,\nnature, and counseling.")
+    ("Danu", "§Matriarch of the Tuatha Dé Danann; caretaker of the Earth."),
+    ("Ogma", "§God of eloquence and learning, master of speech and language."),
+    ("Epona", "§Goddess of fertility, maternity, protector of horses, horse breeding, prosperity, dogs, healing springs, crops."),
+    ("Arwan", "§god of the underground; kingdom of the dead. Evoker of revenge, terror, and war."),
+    ("Scathach", "§Goddess of shadows and destruction, patroness of blacksmiths, healing, magic, prophecy, and martial arts."),
+    ("Merlin", "§The great sorcerer, druid, and magician; master of illusion, shape-shifting, healing, nature, and counseling.")
 ];
 
 pub const CELTIC_GODS_WHO_FLY: [&str; 4] =
@@ -175,7 +141,7 @@ pub const OTHER_GODS_WHO_FLY: [&str; 1] =
 pub const HINDU_GODS: [(&str, &str); 6] =
 [
     ("Durga", "Goddess of victory; bane of evil."),
-    ("Kali", "Goddess of time, creation, destruction, and power; mother of the universe and bestower of moksha."), // Mounts a fox.
+    ("Kali", "§Goddess of time, creation, destruction, and power; mother of the universe and bestower of moksha."), // Mounts a fox.
     ("Ganesha", "Please provide text."), // Mounts a deer
     ("Vishnu", "I'm gonna need some text."),
     ("Surya", "How's about some text for this guy?"),
@@ -184,8 +150,8 @@ pub const HINDU_GODS: [(&str, &str); 6] =
 
 pub const BABYLONIAN_GODS: [(&str, &str); 2] =
 [
-    ("Ereshkigal", "Queen of the underworld and lady of\nthe great below."),
-    ("Gilgamesh", "Someone please tell me something\ninteresting about Gilgamesh.")
+    ("Ereshkigal", "§Queen of the underworld and lady of the great below."),
+    ("Gilgamesh", "§Someone please tell me something interesting about Gilgamesh.")
 ];
 
 /**
@@ -264,36 +230,36 @@ pub fn get_info_for_god(god: &str, class: Class) -> &'static str
     ""
 }
 
+/**
+ * Formatting marks are inserted below.
+ */
 const SAME_GOD: [&str; 5] =
 [
-    "§What's that? You also worship <god>? I might have something else to show you.",
-    "§What's that? You also worship <god>? Maybe there's something else I can do for you...",
-    "§I see you're a follower of <god>. Praise be. Let me help you with something good.",
-    "§I see you've found light in the path of <god>. Let us share in this blessing.",
-    "§Ahh. Another acolyte of <god>, greatness be. Let us share in this blessing."
+    "What's that? You also worship <god>? I might have something else to show you.",
+    "What's that? You also worship <god>? Maybe there's something else I can do for you...",
+    "I see you're a follower of <god>. Praise be. Let me help you with something good.",
+    "I see you've found light in the path of <god>. Let us share in this blessing.",
+    "Ahh. Another acolyte of <god>, greatness be. Let us share in this blessing."
 ];
 
 pub fn generic_same_god_message(name: &String, god: &String) -> String
 {
-    let text = choose(&SAME_GOD);
-
+    let text = *choose(&SAME_GOD);
     let mut ret = String::new();
+    ret += "§";
     ret += name;
     ret += ": ";
-
-    let body = apply_replacements(&text.to_string(), &vec![("<god>", god.clone())]);
-
-    ret += &body;
+    ret += &apply_replacements(text, &vec![("<god>", god.clone())]);
     ret
 }
 
 pub const DONATION_REJECTED: [&str; 3] =
 [
-    "The gods accept your offering, but do not\n\
+    "§The gods accept your offering, but do not \
     believe in your faith.",
-    "The gods smile upon you, but expect further\n\
+    "§The gods smile upon you, but expect further \
     praise on your behalf.",
-    "The gods welcome your sacrifice, but still\n\
+    "§The gods welcome your sacrifice, but still \
     question your devotion."
 ];
 
@@ -525,12 +491,14 @@ pub const NEW_SENDER: [&str; 5] =
     Ah, I see. I'm glad to see you made it all the way here.∫\n\
     If you don't mind, you should go ahead and sit down. \
     This might take us a few minutes.∫\n\
-    Now, then. Let me just ask... Who do you think you are?",
+    Now, then. I want you to tell me who it is you think \
+    you are.",
 
     "§What's that? Who goes there? ∫0.2.∫0.2.∫0.2.∫0.5\n\
     Ah. Good day, there. I'm glad to see you arrived safely.∫\n\
     Now, please, do have a seat. This won't take long.∫\n\
-    Let me start by asking: who exactly do you think you are?"
+    Let me just start by asking: who exactly do you think \
+    you are?"
 ];
 
 pub fn rand_new_sender() -> &'static str
@@ -725,26 +693,26 @@ pub fn new_player_god(player_id: usize, class: Class) -> Dialogue
     {
         static ref melee: Vec<&'static str> = vec!
         [
-            "Ahh, yes of course. A warrior; one\n\
+            "§Ahh, yes of course. A warrior; one \
             who acts with courage and vigilance.",
-            "A master of face to face combat and\n\
+            "§A master of face to face combat and \
             purveyor of blades. A true warrior."
         ];
         static ref ranged: Vec<&'static str> = vec!
         [
-            "Ahh, of course. An archer; one who\n\
-            calculates his actions at range and\n\
+            "§Ahh, of course. An archer; one who \
+            calculates his actions at range and \
             thrives on stealth.",
-            "A master of stealth and ranged combat\n\
+            "§A master of stealth and ranged combat \
             A true archer."
         ];
         static ref magic: Vec<&'static str> = vec!
         [
-            "Yes, of course. A mage; conductor of\n\
+            "§Yes, of course. A mage; conductor of \
             darkness and conjurer of the mysterious.",
-            "A master of illusions and evoker of\n\
+            "§A master of illusions and evoker of \
             the mysterious. A true wizard.",
-            "An illusionist and conjurer of the\n\
+            "§An illusionist and conjurer of the \
             the mysterious. A veritable wizard."
         ];
     }

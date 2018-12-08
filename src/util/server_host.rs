@@ -11,6 +11,7 @@ use hashbrown::HashMap;
 
 use crate::ChannelInfo::Remote;
 use crate::GameMessage;
+use crate::*;
 
 /**
  * To-do: Implement passwords using password-hashing (crate).
@@ -153,7 +154,13 @@ fn handle_reads(socket: &mut TcpStream, address: &SocketAddr, server_tx: &Sender
                 .expect("Failed to send user message");
         }
         Err(ref e) if e.kind() == WouldBlock => (),
-        Err(e) => { println!("Closing connection with: {}.", address); return Err(e); }
+        Err(e) =>
+        {
+            server_tx.send(MessageData("CLOSE".to_string(), Some(address.clone())))
+                .expect("Failed to send user message");
+            println!("Closing connection with: {}.", address);
+            return Err(e);
+        }
     }
     Ok(())
 }
@@ -173,6 +180,7 @@ fn handle_incoming_message(msg: MessageData, visitors: &mut Visitors, clients: &
         "OUTGOING" => outgoing_message(lines, clients),
         "STANDARD" => standard_message(lines, tokens, game_tx),
         "REGISTER" => register_user(lines, &msg, visitors, clients, tokens, server_tx),
+        "CLOSE" => disconnect_message(&msg, clients),
         _ => Err("Unregistered message header")
     }
 }
@@ -313,10 +321,31 @@ fn register_user(mut lines: Lines, data: &MessageData, visitors: &mut Visitors, 
 
         clients.insert(username.clone(), new_client);
         write_to_client(&response, &username, clients);
+        send_global_message(&format!("{} has logged in.", username));
         tokens.insert(token, username);
 
         Ok("Client registered successfully.")
     }
+}
+
+/**
+ * Server sent a message in this format:
+ * ```
+ * CLOSE
+ * ```
+ * Using this to inform other users.
+ */
+fn disconnect_message(msg: &MessageData, clients: &Clients) -> Result<&'static str, &'static str>
+{
+    if let Some(ref address) = msg.1
+    {
+        if let Some(username) = locate_client_username(address, clients)
+        {
+            send_global_message(&format!("{} has disconnected.", username));
+            return Ok("Users were informed.");
+        }
+    }
+    Err("Unable to inform users of disconnect.")
 }
 
 fn clone_client_info(client: &(SocketAddr, TcpStream)) -> (SocketAddr, TcpStream)
@@ -384,6 +413,15 @@ fn locate_visitor(address: &SocketAddr, visitors: &mut Visitors) -> Option<(Sock
         Some(num) => Some(visitors.remove(num)),
         None => None
     }
+}
+
+fn locate_client_username<'a>(address: &SocketAddr, clients: &'a Clients) -> Option<&'a str>
+{
+    for (username, (addr, _stream)) in clients
+    {
+        if *addr == *address { return Some(username); }
+    }
+    None
 }
 
 fn sleep()

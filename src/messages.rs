@@ -1,6 +1,7 @@
 use crate::util::timed_events::{ DelayedEvent, DelayHandler };
 use crate::messages::MessageComponent::*;
 use crate::util::player_options::Dialogue;
+use crate::player_data::PLAYER_META;
 use crate::util::access;
 use crate::text;
 use crate::*;
@@ -20,7 +21,7 @@ use self::ChannelInfo::*;
 
 pub fn send_message_to_player(id: usize, typ: MessageComponent, message: &str, ms_speed: u64) -> DelayHandler
 {
-    access::player_meta(id, move |meta |
+    access::player_meta(id, move | meta |
     {
         match typ
         {
@@ -36,7 +37,7 @@ pub fn send_message_to_player(id: usize, typ: MessageComponent, message: &str, m
 
 pub fn update_player_message(id: usize, typ: MessageComponent, message: &str)
 {
-    access::player_meta(id, move |meta |
+    access::player_meta(id, move | meta |
     {
         match typ
         {
@@ -71,7 +72,7 @@ pub fn send_blocking_message(id: usize, message: &str, ms_speed: u64) -> DelayHa
 
 pub fn add_short_message(id: usize, message: &str)
 {
-    access::player_meta(id, move |meta |
+    access::player_meta(id, move | meta |
     {
         meta.reusable_message.add_to_general(format!("* {}\n", message));
     });
@@ -79,13 +80,27 @@ pub fn add_short_message(id: usize, message: &str)
 
 pub fn send_short_message(id: usize, message: &str) -> DelayHandler
 {
-    access::player_meta(id, move |meta |
+    access::player_meta(id, move | meta |
     {
         meta.reusable_message.add_to_general(format!("* {}\n", message));
 
         send_message_to_channel(&meta.channel, &mut meta.reusable_message, 0)
     })
     .expect("Player data no longer exists.")
+}
+
+pub fn send_global_message(message: &str)
+{
+    unsafe {if let Some(ref mut registry) = PLAYER_META
+    {
+        for player in registry
+        {
+            player.reusable_message.add_to_general(format!("* {}\n", message));
+
+            send_message_to_channel(&player.channel, &mut player.reusable_message, 0);
+        }
+    }
+    else { panic!("Player registry was not setup in time.") }}
 }
 
 pub fn send_message_to_channel(channel: &ChannelInfo, message: &mut ReusableMessage, ms_speed: u64) -> DelayHandler
@@ -303,7 +318,7 @@ impl ReusableMessage
         let formatted;
         if message.starts_with("§")
         {
-            let with_lines = text::auto_break(&message[2..]);
+            let with_lines = text::auto_break(0,&message[2..]);
             formatted = indent_general(&with_lines);
         }
         else { formatted = indent_general(message); }
@@ -325,7 +340,7 @@ impl ReusableMessage
     {
         if message.starts_with("§")
         {
-            message = text::auto_break(&message[2..]);
+            message = text::auto_break(0, &message[2..]);
         }
 
         if self.general.len() > 0

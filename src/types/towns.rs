@@ -274,7 +274,7 @@ fn generate_map(town_num: usize, class: Class) -> (Map, Locations)
 
     while current_x < D - 1 // < Max depth index
     {
-        /**
+        /*
          * Cycle the directions backward, recalculate next_dir.
          */
         previous_dir = current_dir;

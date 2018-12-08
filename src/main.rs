@@ -1,9 +1,6 @@
-#![feature(stmt_expr_attributes)] // Not actually used; Just a comment formatting issue.
+#![allow(dead_code, unused_doc_comments)]
 #![feature(duration_as_u128)]
 #![feature(drain_filter)]
-#![feature(vec_remove_item)]
-#![feature(rustc_private)]
-#![allow(dead_code, unused_doc_comments)] // To-do: conform
 
 #[macro_use]
 extern crate lazy_static;
@@ -21,7 +18,6 @@ pub mod player_data;
  * Very common methods
  */
 
-//pub use test_game_derive::{ ItemTools, AreaTools, EntityHolder };
 pub use self::player_options::DialogueOption::*;
 pub use self::text::choose;
 pub use self::player_options::*;
@@ -37,10 +33,11 @@ use self::util::{
     timed_events
 };
 
+use self::player_data::{ PlayerMeta, PLAYER_META };
+use self::messages::MessageComponent::*;
 use self::types::areas::area_settings;
 use self::types::items::item_settings;
 use self::messages::ChannelInfo::*;
-use self::player_data::PlayerMeta;
 use self::types::towns;
 
 use std::{
@@ -69,7 +66,7 @@ const NUM_SPACES: u8 = 50; // Separate by lines until a TUI is implemented.
 const MAX_SHORT_MESSAGES: usize = 3;
 pub const TEXT_SPEED: u64 = 1500;
 pub const TEMP_DIALOGUE_DURATION: u64 = 20_000;
-pub const LINE_LENGTH: usize = 40;
+pub const LINE_LENGTH: usize = 40; // Should probably be no lower than this.
 const PRINT_FRAMES: bool = false;
 const CHEATS_ENABLED: bool = true;
 
@@ -104,7 +101,7 @@ fn init()
 {
     area_settings::register_vanilla_settings();
     item_settings::register_vanilla_settings();
-    if CHEATS_ENABLED { register_global_commands(); }
+    register_global_commands();
 }
 
 fn run()
@@ -235,26 +232,24 @@ fn handle_global_commands(message: &GameMessage, is_running: &mut bool)
 {
     match message.message.as_str()
     {
-        "pause" | "p" =>
-        {
-            if *is_running { *is_running = false; }
-            else { *is_running = true; }
-
-            println!("Game is now {}.", if *is_running { "unpaused" } else { "paused" });
-        },
-        "end" | "quit" =>
-        {
-            process::exit(0);
-        }
+        "pause" | "p" => toggle_pause(is_running),
+        "end" | "quit" => process::exit(0),
         _ => {}
     }
+}
+
+fn toggle_pause(is_running: &mut bool)
+{
+    if *is_running { *is_running = false; }
+    else { *is_running = true; }
+    println!("Game is now {}.", if *is_running { "unpaused" } else { "paused" });
 }
 
 fn handle_player_commands(message: &GameMessage)
 {
     let response =
 
-    access::player_meta_sender(&message.channel_info, |meta |
+    access::player_meta_sender(&message.channel_info, | meta |
     {
         process_options(meta.player_id, &message.message);
     });
@@ -323,12 +318,18 @@ fn register_global_commands()
 {
     register_options(Dialogue::commands(
         "Commands",
-        vec![
+        if CHEATS_ENABLED { vec![
             tp_command(),
             money_command(),
             god_command(),
+            settings_command(),
+            players_command(),
             message_command()
-        ],
+        ]} else { vec![
+            settings_command(),
+            players_command(),
+            message_command()
+        ]},
         GLOBAL_USER
     ));
 }
@@ -421,7 +422,7 @@ fn money_command() -> Command
              }
          };
 
-         access::player_context(player_id, |_, _, _, entity |
+         access::player(player_id, | entity |
          {
              if quantity > 0
              {
@@ -441,7 +442,7 @@ fn god_command() -> Command
      {
          if args.len() < 1 { send_short_message(player_id, "Error: You need to specify which one."); return; }
 
-         send_short_message(player_id, &format!("Setting your got to {}.", args[0]));
+         send_short_message(player_id, &format!("Setting your god to {}.", args[0]));
 
          access::player_meta(player_id, |player |
          {
@@ -450,9 +451,95 @@ fn god_command() -> Command
      })
 }
 
+fn settings_command() -> Command
+{
+    Command::action_only("settings", "Change your settings.",
+    | args, player_id |
+    {
+        let delete = if args.len() > 0
+        { args[0] != "open" } else { true };
+
+        access::player_meta(player_id, move | player |
+        {
+            let settings = settings_dialogue(player);
+            let settings_id = settings.id;
+            register_options(settings);
+
+            if delete { Dialogue::delete_in(player_id, settings_id, TEMP_DIALOGUE_DURATION); }
+            else { add_short_message(player_id, "Your settings dialogue will stay open."); }
+        });
+        send_current_options(player_id);
+    })
+}
+
+fn settings_dialogue(player: &mut PlayerMeta) -> Dialogue
+{
+    Dialogue::no_message
+    (
+        "Player Settings",
+        vec![
+            close_settings()
+        ],
+        vec![
+            text_speed_command(),
+            text_length_command()
+        ],
+        player.player_id
+    )
+}
+
+fn close_settings() -> Response
+{
+    Response::delete_dialogue("Close Settings", |_|{})
+}
+
+fn text_speed_command() -> Command
+{
+    Command::text_only("tspeed", "tspeed", "To-do. Use main.rs.")
+}
+
+fn text_length_command() -> Command
+{
+    Command::text_only("tlength", "tlength", "To-do. Use main.rs.")
+}
+
+fn players_command() -> Command
+{
+    Command::manual_desc_no_next("players", "players", "Display all active players.",
+    | _args, player_id |
+    {
+        let message = get_players_message();
+        send_message_to_player(player_id, General, &message, 0);
+    })
+}
+
+fn get_players_message() -> String
+{
+    unsafe { if let Some(ref registry) = PLAYER_META
+    {
+        let mut message = String::from("Connected players:");
+
+        let iter = registry.iter()
+            .filter(| p | p.active)
+            .enumerate();
+
+        for (index, player) in iter
+        {
+            if index % 2 == 0 { message += "\n "; }
+            message += " * ";
+            message += &player.name;
+            message += " ";
+            message += &format!("{:?}", player.coordinates);
+        }
+        message += "To-do: Display as T: #; A: <name>.";
+        return message;
+    }
+    else { panic!("Player registry was not setup in time."); }}
+}
+
 fn message_command() -> Command
 {
-    Command::manual_desc("msg", "msg x", "Send a message to x (username).",
+    Command::manual_desc_no_next("msg", "msg x", "Send a message to x (username).",
     | args, player_id |
     {
         if args.len() < 1 { send_short_message(player_id, "Error: You need to specify a username."); }

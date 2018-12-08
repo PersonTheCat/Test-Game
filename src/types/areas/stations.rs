@@ -13,100 +13,100 @@ use rand::{ Rng, thread_rng };
 
 static ENTRANCE_TEXT: [&str; 5] =
 [
-    "Welcome to station #<station>. Our trains can make it\n\
-    as far as <south>km south, while our north-bound travels\n\
-    are going as far as <north>km.∫ Ask the conductor to find\n\
+    "§Welcome to station #<station>. Our trains can make it \
+    as far as <south>km south, while our north-bound travels \
+    are going as far as <north>km.∫ Ask the conductor to find \
     out we're going.",
 
-    "Welcome to station #<station>. These trains are going\n\
-    down about <south>km from here. We're also travelling\n\
-    all the way up as far as <north> km.∫ Ask the conductor\n\
+    "§Welcome to station #<station>. These trains are going \
+    down about <south>km from here. We're also travelling \
+    all the way up as far as <north> km.∫ Ask the conductor \
     for more information.",
 
-    "Welcome to station #<station>. These old rails can\n\
-    make it anywhere from <south>km south to <north>km north.∫\n\
-    Feel free to ask the conductor for more information about\n\
+    "§Welcome to station #<station>. These old rails can \
+    make it anywhere from <south>km south to <north>km north.∫ \
+    Feel free to ask the conductor for more information about \
     our travels.",
 
-    "Hello and welcome to station #<station>. Our conductor's\n\
-    fares will go as far as <south>km south and <north>km north.∫\n\
-    Enjoy your travels and don't hesitate to ask the\n\
+    "§Hello and welcome to station #<station>. Our conductor's \
+    fares will go as far as <south>km south and <north>km north.∫ \
+    Enjoy your travels and don't hesitate to ask the \
     conductor for more information.",
 
-    "Hello, there! Welcome to station #<station>. We're\n\
-    currently offering travels south-bound as far as \n\
-    <south>km from here, and roughly <north>km north-bound.∫\n\
-    Enjoy your travels and feel free to speak to the\n\
+    "§Hello, there! Welcome to station #<station>. We're \
+    currently offering travels south-bound as far as \
+    <south>km from here, and roughly <north>km north-bound.∫ \
+    Enjoy your travels and feel free to speak to the \
     conductor, if you need anything else."
 ];
 
 static TRAVEL_PASS_INFO_TEXT: [&str; 3] =
 [
-    "You can use travel passes to travel between towns.\n\
-    Travel passes are stored inside of a booklet, which\n\
-    is fairly cheap and can hold up to five passes at a\n\
-    time.∫ Depending on the class you purchase, passes\n\
+    "§You can use travel passes to travel between towns. \
+    Travel passes are stored inside of a booklet, which \
+    is fairly cheap and can hold up to five passes at a \
+    time.∫ Depending on the class you purchase, passes \
     can be reused for free until they run out.",
 
-    "Travel passes can be used to travel between towns.\n\
-    You can hold up to five passes inside of a travel\n\
-    booklet, which can be purchased for fairly cheap.∫\n\
-    Depending on which class you purchase, you'll be\n\
+    "§Travel passes can be used to travel between towns. \
+    You can hold up to five passes inside of a travel \
+    booklet, which can be purchased for fairly cheap.∫ \
+    Depending on which class you purchase, you'll be \
     able to reuse them for free until they run out.",
 
-    "We sell travel passes, which can be used at any\n\
-    station to travel between towns. You can hold\n\
-    up to five of these passes inside of a travel\n\
-    booklet.∫ Each pass can be reused a certain\n\
-    number of times, depending on which class you\n\
+    "§We sell travel passes, which can be used at any \
+    station to travel between towns. You can hold \
+    up to five of these passes inside of a travel \
+    booklet.∫ Each pass can be reused a certain \
+    number of times, depending on which class you \
     purchase."
 ];
 
 static PASS_PURCHASE_INFO_TEXT: [&str; 3] =
 [
-    "We're currently selling passes at about <rate>g per km.∫0.5\n\
-    If you need a booklet to hold more, you can buy one\n\
+    "§We're currently selling passes at about <rate>g per km.∫0.5 \
+    If you need a booklet to hold more, you can buy one \
     for about <booklet>g.",
 
-    "Our travel passes are currently going for about <rate>g\n\
-    per km.∫0.5 if your booklet is running low on space or\n\
-    if you need to purchase a new one, you can buy one from us\n\
+    "§Our travel passes are currently going for about <rate>g \
+    per km.∫0.5 if your booklet is running low on space or \
+    if you need to purchase a new one, you can buy one from us \
     for about <booklet>g.",
 
-    "We sell travel passes for roughly <rate>g per km.∫0.5\n\
+    "§We sell travel passes for roughly <rate>g per km.∫0.5 \
     If needed, you can also buy a booklet for about <booklet>g."
 ];
 
 static PASS_PURCHASE_TEXT: [&str; 3] =
 [
-    "We'll sell you a pass for anywhere from town #<south>\n\
-    to town #<north>. The current rate per town is <rate>g.∫0.5\n\
-    If you want to purchase a reusable ticket, just let\n\
+    "§We'll sell you a pass for anywhere from town #<south> \
+    to town #<north>. The current rate per town is <rate>g.∫0.5 \
+    If you want to purchase a reusable ticket, just let \
     me know and I'll give you an upgrade.",
 
-    "Looks like we're selling tickets for anywhere from\n\
-    town #<south> to town #<north>. They're going at\n\
-    about <rate>g per town.∫0.5 If you want me to upgrade\n\
-    your ticket so you can reuse it, just let me know and\n\
+    "§Looks like we're selling tickets for anywhere from \
+    town #<south> to town #<north>. They're going at \
+    about <rate>g per town.∫0.5 If you want me to upgrade \
+    your ticket so you can reuse it, just let me know and \
     I'll see what I can arrange.",
 
-    "We're currently offering travel passes that will take\n\
-    you from town #<south> to town #<north>. But it's not\n\
-    easy going long distance, so each kilometer will cost\n\
-    you an extra <rate>g.∫0.5 If you like, I can upgrade\n\
-    your pass for you so you can reuse it later on. Just\n\
+    "§We're currently offering travel passes that will take \
+    you from town #<south> to town #<north>. But it's not \
+    easy going long distance, so each kilometer will cost \
+    you an extra <rate>g.∫0.5 If you like, I can upgrade \
+    your pass for you so you can reuse it later on. Just \
     say so, if that's what you need."
 ];
 
 static PASS_USE_TEXT: [&str; 3] =
 [
-    "Very well. Just let me know the number of the town\n\
+    "§Very well. Just let me know the number of the town \
     you'd like to travel to and we'll set off.",
 
-    "Ah, yes. Just let me know which town you'd like to\n\
+    "§Ah, yes. Just let me know which town you'd like to \
     travel to and we'll be on our way shortly.",
 
-    "Very good. Just tell me which town you'd like to\n\
+    "§Very good. Just tell me which town you'd like to \
     travel to and we'll leave shortly."
 ];
 
@@ -191,7 +191,7 @@ impl Area for Station
         let north_dist = self.distance_north;
 
         responses.push(travel_pass_info(
-            "Ask for more information about travel passes."
+            "§Ask for more information about travel passes."
         ));
         responses.push(pass_purchase_info(town_num,
             "Ask about buying travel passes."

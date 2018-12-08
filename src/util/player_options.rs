@@ -360,6 +360,28 @@ impl Dialogue
         }
     }
 
+    pub fn no_message
+    (
+        title: &str,
+        responses: Vec<Response>,
+        commands: Vec<Command>,
+        player_id: usize,
+    )
+        -> Dialogue
+    {
+        Dialogue
+        {
+            title: String::from(title),
+            text: None,
+            info: None,
+            responses,
+            commands,
+            text_handler: None,
+            player_id,
+            id: random()
+        }
+    }
+
     /**
      * Try to remove this.
      */
@@ -515,9 +537,9 @@ impl Dialogue
 
     pub fn from_area(player_id: usize) -> Dialogue
     {
-        access::player_meta(player_id, |meta |
+        access::player_meta(player_id, | meta |
         {
-            access::area(meta.coordinates, |area |
+            access::area(meta.coordinates, | area |
             {
                 area.get_dialogue(player_id)
             })
@@ -613,23 +635,20 @@ impl Dialogue
 
         for option in &self.responses
         {
-            ret += &format!("{}: {}\n", option_num, option.text);
+            ret += &option.get_display(option_num);
             option_num += 1;
         }
-
         if let Some(ref th) = self.text_handler
         {
             ret += &format!("_: {}", th.text);
         }
-
         if self.commands.len() > 0
         {
             ret += "\n";
         }
-
         for command in &self.commands
         {
-            ret += &format!("{}\n", command.get_display());
+            ret += &command.get_display();
         }
         ret
     }
@@ -821,7 +840,7 @@ impl Response
             (exe)(player_id);
         }
 
-        let next_dialogue = match self.next_dialogue
+        let next_dialogue = match &self.next_dialogue
         {
             Generate(ref d) => Some((d)()),
             FromArea => Some(Dialogue::from_area(player_id)),
@@ -849,6 +868,16 @@ impl Response
             else { replace_send_options(player_id, current_dialogue.id, dialogue); }
         }
     }
+
+    pub fn get_display(&self, option_num: usize) -> String
+    {
+        if self.text.starts_with("§")
+        {
+            let text = text::auto_break(3,&self.text[2..]);
+            format!("{}: {}\n", option_num, text)
+        }
+        else { format!("{}: {}\n", option_num, self.text) }
+    }
 }
 
 pub struct Command
@@ -862,7 +891,7 @@ pub struct Command
 
 impl Command
 {
-    pub fn new<F1, F2>(input: &'static str, desc: &'static str, output: &'static str, run: F1, next_dialogue: F2) -> Command
+    pub fn new<F1, F2>(input: &str, desc: &str, output: &str, run: F1, next_dialogue: F2) -> Command
         where F1: Fn(&Vec<&str>, usize) + 'static,
               F2: Fn() -> Dialogue + 'static
     {
@@ -876,7 +905,7 @@ impl Command
         }
     }
 
-    pub fn simple<F>(input: &'static str, output: &'static str, run: F) -> Command
+    pub fn simple<F>(input: &str, output: &str, run: F) -> Command
         where F: Fn(&Vec<&str>, usize) + 'static
     {
         Command
@@ -889,7 +918,45 @@ impl Command
         }
     }
 
-    pub fn manual_desc<F>(input: &'static str, desc: &'static str, output: &'static str, run: F) -> Command
+    pub fn action_only<F>(input: &str, output: &str, run: F) -> Command
+        where F: Fn(&Vec<&str>, usize) + 'static
+    {
+        Command
+        {
+            name: String::from(input),
+            input_desc: String::from(input),
+            output_desc: String::from(output),
+            run: Box::new(run),
+            next_dialogue: Ignore
+        }
+    }
+
+    pub fn text_only(input: &str, desc: &str, output: &str) -> Command
+    {
+        Command
+        {
+            name: String::from(input),
+            input_desc: String::from(desc),
+            output_desc: String::from(output),
+            run: Box::new(|_,_|{}),
+            next_dialogue: FromArea
+        }
+    }
+
+    pub fn delete_dialogue<F>(input: &str, desc: &str, output: &str, run: F) -> Command
+        where F: Fn(&Vec<&str>, usize) + 'static
+    {
+        Command
+        {
+            name: String::from(input),
+            input_desc: String::from(desc),
+            output_desc: String::from(output),
+            run: Box::new(run),
+            next_dialogue: Delete
+        }
+    }
+
+    pub fn manual_desc<F>(input: &str, desc: &str, output: &str, run: F) -> Command
         where F: Fn(&Vec<&str>, usize) + 'static
     {
         Command
@@ -902,7 +969,7 @@ impl Command
         }
     }
 
-    pub fn manual_desc_no_next<F>(input: &'static str, desc: &'static str, output: &'static str, run: F) -> Command
+    pub fn manual_desc_no_next<F>(input: &str, desc: &str, output: &str, run: F) -> Command
         where F: Fn(&Vec<&str>, usize) + 'static
     {
         Command
@@ -915,7 +982,7 @@ impl Command
         }
     }
 
-    pub fn goto_dialogue<F>(input: &'static str, output: &'static str, dialogue: F) -> Command
+    pub fn goto_dialogue<F>(input: &str, output: &str, dialogue: F) -> Command
         where F: Fn() -> Dialogue + 'static
     {
         Command
@@ -932,7 +999,7 @@ impl Command
     {
         (self.run)(args, player_id);
 
-        let next_dialogue = match self.next_dialogue
+        let next_dialogue = match &self.next_dialogue
         {
             Generate(ref d) => Some((d)()),
             FromArea => Some(Dialogue::from_area(player_id)),
@@ -963,7 +1030,9 @@ impl Command
 
     pub fn get_display(&self) -> String
     {
-        format!("| {} | -> {}", self.input_desc, self.output_desc)
+        let text = format!("| {} | -> {}\n", self.input_desc, self.output_desc);
+        if self.output_desc.starts_with("§")
+        { text::auto_break(3, &text) } else { text }
     }
 }
 
@@ -980,7 +1049,7 @@ impl TextHandler
     {
         (self.execute)(args);
 
-        let next_dialogue= match self.next_dialogue
+        let next_dialogue= match &self.next_dialogue
         {
             Generate(ref d) => Some((d)()),
             FromArea => Some(Dialogue::from_area(player_id)),

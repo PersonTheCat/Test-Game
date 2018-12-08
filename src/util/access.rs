@@ -4,7 +4,7 @@ use crate::types::towns::{ self, Town };
 use crate::*;
 
 /**
- *   These are a bunch of methods I use for accessing
+ *   These are a bunch of functions I use for accessing
  * variables statically provided information about them.
  * It's relatively inefficient, and while sometimes it
  * can result in fairly pretty code, it also quickly
@@ -33,7 +33,7 @@ impl EntityAccessor
     {
         if self.is_player
         {
-            player_meta(self.entity_id, |p | p.get_accessor())
+            player_meta(self.entity_id, | p | p.get_accessor())
                 .expect("Player data no longer exists.")
         }
         else { self }
@@ -45,7 +45,7 @@ pub fn entity<T, F>(accessor: EntityAccessor, callback: F) -> Option<T>
 {
     let accessor = accessor.update();
 
-    area(accessor.coordinates, |area |
+    area(accessor.coordinates, | area |
     {
         let entities = area.borrow_entities_ref();
 
@@ -55,7 +55,7 @@ pub fn entity<T, F>(accessor: EntityAccessor, callback: F) -> Option<T>
 
         match entity
         {
-            Some(ref e) => Some(callback(&***e)),
+            Some(e) => Some(callback(&**e)),
             None => None
         }
     })
@@ -113,7 +113,7 @@ pub fn player_context<T, F>(player_id: usize, callback: F) -> Option<T>
             None => return None
         };
 
-        return town(player.coordinates.0, |town |
+        return town(player.coordinates.0, | town |
         {
             let area = match &town.get_areas()[player.coordinates.1][player.coordinates.2]
             {
@@ -142,12 +142,12 @@ pub fn player_context<T, F>(player_id: usize, callback: F) -> Option<T>
 pub fn player<T, F>(player_id: usize, callback: F) -> Option<T>
     where F: FnOnce(&Entity) -> T
 {
-    player_context(player_id, |_, _, _, e | callback(e))
+    player_context(player_id, | _, _, _, e | callback(e))
 }
 
 pub fn get_player_for_sender(channel: &ChannelInfo) -> Option<usize>
 {
-    player_meta_sender(channel, |p | p.player_id)
+    player_meta_sender(channel, | p | p.player_id)
 }
 
 pub fn town<F, T>(num: usize, callback: F) -> T
@@ -170,7 +170,7 @@ pub fn town<F, T>(num: usize, callback: F) -> T
 
 pub fn area_exists(coords: (usize, usize, usize)) -> bool
 {
-    town(coords.0, |town |
+    town(coords.0, | town |
     {
         town.get_areas()[coords.1][coords.2].is_some()
     })
@@ -179,7 +179,7 @@ pub fn area_exists(coords: (usize, usize, usize)) -> bool
 pub fn area<F, T>(coords: (usize, usize, usize), callback: F) -> Option<T>
     where F: FnOnce(&Area) -> T
 {
-    town(coords.0, |town |
+    town(coords.0, | town |
     {
         match &town.get_areas()[coords.1][coords.2]
         {
@@ -192,7 +192,7 @@ pub fn area<F, T>(coords: (usize, usize, usize), callback: F) -> Option<T>
 pub fn starting_area<F, T>(town_num: usize, callback: F) -> T
     where F: FnOnce(&Area) -> T
 {
-    town(town_num, |town |
+    town(town_num, | town |
     {
         let area = &town.get_areas()[towns::STARTING_COORDS.0][towns::STARTING_COORDS.1];
 
