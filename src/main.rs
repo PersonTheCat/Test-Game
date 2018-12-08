@@ -64,7 +64,7 @@ use self::util::server_host;
 const UPDATES_PER_SECOND: u16 = 10;
 const NUM_SPACES: u8 = 50; // Separate by lines until a TUI is implemented.
 const MAX_SHORT_MESSAGES: usize = 3;
-pub const TEXT_SPEED: u64 = 1500;
+pub const TEXT_SPEED: u64 = 3000;
 pub const TEMP_DIALOGUE_DURATION: u64 = 20_000;
 pub const LINE_LENGTH: usize = 40; // Should probably be no lower than this.
 const PRINT_FRAMES: bool = false;
