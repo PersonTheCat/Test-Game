@@ -1,7 +1,7 @@
-use types::classes::Class;
-use traits::Area;
+use crate::types::classes::Class;
+use crate::traits::Area;
 
-use types::areas::{
+use crate::types::areas::{
     altars::Altar,
     bosses::BossRoom,
     dungeons::Dungeon,
@@ -13,7 +13,7 @@ use types::areas::{
 };
 
 // Center(deep), Depth
-use towns::{ CD, D };
+use crate::types::towns::{ CD, D };
 
 use self::PathPreference::*;
 

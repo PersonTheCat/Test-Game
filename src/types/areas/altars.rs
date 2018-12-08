@@ -1,10 +1,10 @@
-use traits::{ Area, Entity };
-use player_options::Response;
-use player_data::PlayerMeta;
-use types::effects::Effect;
-use types::classes::Class;
-use var_access;
-use text;
+use crate::traits::{ Area, Entity };
+use crate::util::player_options::Response;
+use crate::player_data::PlayerMeta;
+use crate::types::effects::Effect;
+use crate::types::classes::Class;
+use crate::util::access;
+use crate::text;
 
 use std::cell::RefCell;
 
@@ -60,7 +60,7 @@ impl Area for Altar
 
     fn get_title(&self) -> String { self.area_title.clone() }
 
-    fn get_info_for_player(&self, _player: &mut PlayerMeta) -> Option<String>
+    fn get_dialogue_info(&self, _player: &mut PlayerMeta) -> Option<String>
     {
         Some(format!(
             "The inscription upon the altar reads:\n\
@@ -70,7 +70,7 @@ impl Area for Altar
         ))
     }
 
-    fn get_specials_for_player(&self, player: &mut PlayerMeta, responses: &mut Vec<Response>)
+    fn get_specials(&self, player: &mut PlayerMeta, responses: &mut Vec<Response>)
     {
         let num_uses = player.get_record(self.get_coordinates(), "num_uses");
 
@@ -84,7 +84,7 @@ impl Area for Altar
         {
             responses.push(Response::simple("Pray to the god", | player_id |
             {
-                var_access::access_player_context(player_id, | meta, _, area, entity |
+                access::player_context(player_id, |meta, _, area, entity |
                 {
                     let blessing = Effect::positive_altar_effect();
                     blessing.apply(entity);
@@ -98,7 +98,7 @@ impl Area for Altar
         {
             responses.push(Response::simple("Pray to the god", | player_id |
             {
-                var_access::access_player_context(player_id, | meta, _, area, entity |
+                access::player_context(player_id, |meta, _, area, entity |
                 {
                     let (blessing, curse) = Effect::normal_altar_effect();
 

@@ -1,4 +1,4 @@
-use traits::Entity;
+use crate::traits::Entity;
 use std::cell::Cell;
 use rand::random;
 

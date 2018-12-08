@@ -1,5 +1,5 @@
-use traits::{ Area, Entity };
-use types::classes::Class;
+use crate::traits::{ Area, Entity };
+use crate::types::classes::Class;
 
 use std::cell::RefCell;
 

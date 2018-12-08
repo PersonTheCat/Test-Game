@@ -1,4 +1,4 @@
-use traits::{ Item };
+use crate::traits::{ Item };
 
 #[derive(Clone, ItemTools)]
 pub struct TownKey

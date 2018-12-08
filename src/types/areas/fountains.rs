@@ -1,11 +1,12 @@
-use types::entities::players::Player;
-use types::effects::{ Effect, EffectType::* };
-use player_options::Response;
-use player_data::PlayerMeta;
-use traits::{ Area, Entity };
-use types::classes::Class;
-use var_access;
-use text;
+use crate::types::entities::players::Player;
+use crate::types::effects::{ Effect, EffectType::* };
+use crate::util::player_options::Response;
+use crate::player_data::PlayerMeta;
+use crate::traits::{ Area, Entity };
+use crate::types::classes::Class;
+use crate::util::access;
+use crate::text;
+use crate::*;
 
 use std::cell::RefCell;
 
@@ -50,7 +51,10 @@ impl Area for Fountain
 
     fn get_title(&self) -> String { self.area_title.clone() }
 
-    fn get_specials_for_player(&self, player: &mut PlayerMeta, responses: &mut Vec<Response>)
+    /**
+     * Needs some serious refactoring for readability.
+     */
+    fn get_specials(&self, player: &mut PlayerMeta, responses: &mut Vec<Response>)
     {
         let coords = self.get_coordinates();
         let successful_donations = player.get_record(coords, "successful_donations");
@@ -63,7 +67,7 @@ impl Area for Fountain
 
             responses.push(Response::_simple(text, move | player_id |
             {
-                var_access::access_player_context(player_id, | meta, town, _, entity |
+                access::player_context(player_id, |meta, town, _, entity |
                 {
                     if entity.can_afford(price)
                     {
@@ -79,13 +83,13 @@ impl Area for Fountain
 
                             if let Temporary(duration) = effect.effect_type
                             {
-                                ::add_short_message(player_id, &format!("The gods have blessed you with\n{} {} for {} seconds.", effect.name, effect.level, duration / 1000));
+                                add_short_message(player_id, &format!("The gods have blessed you with\n{} {} for {} seconds.", effect.name, effect.level, duration / 1000));
                             }
-                            else { ::add_short_message(player_id, &format!("The gods have blessed you with\n{} {}.", effect.name, effect.level)); }
+                            else { add_short_message(player_id, &format!("The gods have blessed you with\n{} {}.", effect.name, effect.level)); }
                         }
-                        else { ::add_short_message(player_id, text::rand_donation_rejected()); }
+                        else { add_short_message(player_id, text::rand_donation_rejected()); }
                     }
-                    else { ::add_short_message(player_id, "You can't afford this offering."); }
+                    else { add_short_message(player_id, "You can't afford this offering."); }
                 });
             }));
         }

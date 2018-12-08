@@ -1,8 +1,9 @@
-use player_options::{ Response, Dialogue, TextHandler };
-use types::classes::Class::{self, *};
-use types::entities::players::Player;
-use traits::Entity;
-use var_access;
+use crate::util::player_options::{ Response, Dialogue, TextHandler };
+use crate::types::classes::Class::{self, *};
+use crate::types::entities::players::Player;
+use crate::traits::Entity;
+use crate::util::access;
+use crate::*;
 
 use rand::{ thread_rng, Rng };
 
@@ -12,15 +13,107 @@ use rand::{ thread_rng, Rng };
  * other classes. For smaller classes, it may be
  * cleaner just to keep all related text and code in
  * one location.
+ *
+ * ## Text formatting info:
+ *
+ * The `§` character will handle automatically inserting
+ * new lines, whereas the `∫` character splits the text up
+ * and sends it to the user in sections. `∫` can be followed
+ * by a floating point number to indicate the speed with
+ * which each next section should come. This is a
+ * multiplier which defaults to 1.00. In some cases,
+ * new lines have been manually inserted even when using
+ * `§`. This is because using `∫` to send text in sections
+ * results in messages that are difficult to keep up with.
+ * Thus, an extra `\n` will improve readability for the
+ * user.
  */
 
+/** To-do: Create and move this to common_functions.rs */
 pub fn choose<T>(a: &[T]) -> &T
 {
     thread_rng().choose(a)
         .expect("You need to use thread_rng().choose() for arrays where len < 1.")
 }
 
-pub fn apply_replacements(text: &str, replacements: &Vec<(&str, String)>) -> String
+pub fn auto_break(text: &str) -> String
+{
+    let mut chars: Vec<char> = text.chars().collect();
+    if chars.len() <= LINE_LENGTH { return text.to_string(); }
+
+    let mut start_at = 0;
+    while start_at <= chars.len() - LINE_LENGTH
+    {
+        let end = end_of_line(start_at, &chars);
+        chars[end] = '\n';
+        start_at = end + 1;
+    }
+    chars.into_iter().collect()
+}
+
+fn end_of_line(start_at: usize, text: &Vec<char>) -> usize
+{
+    let max_line = &text[start_at..(start_at + LINE_LENGTH)];
+    let mut final_space = max_line.len();
+
+    //Iterate forward in case of an early new line.
+    for (i, c) in max_line.iter().enumerate()
+    {
+        match *c
+        {
+            '\n' => return start_at + i,
+            ' ' => final_space = i,
+            _ => {}
+        };
+    }
+    start_at + final_space
+}
+
+fn get_last_char(ch: char, text: &[char]) -> usize
+{
+    for (i, c) in text.iter().enumerate().rev()
+    {
+        if *c == ch { return i; }
+    }
+    text.len()
+}
+
+///** Faster; does not support special characters. */
+//pub fn auto_break_old(text: &str) -> String
+//{
+//    let mut ret = text.to_string();
+//    if ret.len() <= ::LINE_LENGTH { return ret; }
+//
+//    let mut start_at = 0;
+//    while start_at < text.len() - ::LINE_LENGTH
+//    {
+//        let final_space = end_of_line(start_at,&ret);
+//        ret.insert(final_space + 1, '\n');
+//        start_at += final_space;
+//    }
+//    ret
+//}
+//
+//fn end_of_line(start_at: usize, text: &str) -> usize
+//{
+//    let line = &text[start_at..(start_at + ::LINE_LENGTH)];
+//    get_last_char(' ', line)
+//}
+//
+//fn get_last_char(ch: char, text: &str) -> usize
+//{
+//    let chars = text
+//        .char_indices()
+//        .rev();
+//
+//    for (i, c) in chars
+//    {
+//        if c == ch { return i; }
+//    }
+//    text.len()
+//}
+
+pub fn apply_replacements(text: &str, replacements: &[(&str, String)]) -> String
 {
     let mut ret = text.to_string();
 
@@ -28,7 +121,6 @@ pub fn apply_replacements(text: &str, replacements: &Vec<(&str, String)>) -> Str
     {
         ret = ret.replace(find, replace);
     }
-
     ret
 }
 
@@ -40,7 +132,6 @@ pub fn convert_to_vec(array: &[&str]) -> Vec<String>
     {
         ret.push(text.to_string());
     }
-
     ret
 }
 
@@ -52,7 +143,6 @@ fn tuples_to_vec(tuples: &[(&str, &str)]) -> Vec<String>
     {
         ret.push(name.to_string());
     }
-
     ret
 }
 
@@ -82,28 +172,14 @@ pub const OTHER_GODS_WHO_FLY: [&str; 1] =
     "Horagalles"
 ];
 
-pub const NEW_HINDU_GODS: [(&str, &str); 5] =
+pub const HINDU_GODS: [(&str, &str); 6] =
 [
     ("Durga", "Goddess of victory; bane of evil."),
     ("Kali", "Goddess of time, creation, destruction, and power; mother of the universe and bestower of moksha."), // Mounts a fox.
-    ("Ganesha", ""), // Mounts a deer
-    ("Vishnu", ""),
-    ("Surya", "")
-];
-
-pub const HINDU_GODS: [&str; 3] =
-[
-    "Vishnu", "Ganesha", "Krishna"
-];
-
-pub const HUNTING_GODS: [&str; 2] =
-[
-    "Oshosi", "Tapio"
-];
-
-pub const MAGIC_GODS: [&str; 1] =
-[
-    "Merlin"
+    ("Ganesha", "Please provide text."), // Mounts a deer
+    ("Vishnu", "I'm gonna need some text."),
+    ("Surya", "How's about some text for this guy?"),
+    ("Krishna", "Yo, shoot me some info on this guy.")
 ];
 
 pub const BABYLONIAN_GODS: [(&str, &str); 2] =
@@ -123,7 +199,7 @@ pub fn gods_for_class(class: Class) -> Vec<String>
     {
         Melee => tuples_to_vec(&BABYLONIAN_GODS),
         Ranged => tuples_to_vec(&CELTIC_GODS),
-        Magic => convert_to_vec(&HINDU_GODS)
+        Magic => tuples_to_vec(&HINDU_GODS)
     }
 }
 
@@ -135,7 +211,7 @@ pub fn rand_god_info(class: Class) -> (&'static str, &'static str)
     {
         Melee => rand_babylonian_god_info(),
         Ranged => rand_celtic_god_info(),
-        Magic => ("Magic-N/A", "Magic gods still don't have info.")
+        Magic => rand_hindu_god_info()
     }
 }
 
@@ -150,6 +226,11 @@ pub fn rand_celtic_god_info() -> (&'static str, &'static str)
 }
 
 pub fn rand_hindu_god() -> &'static str
+{
+    choose(&HINDU_GODS).0
+}
+
+pub fn rand_hindu_god_info() -> (&'static str, &'static str)
 {
     *choose(&HINDU_GODS)
 }
@@ -170,7 +251,7 @@ pub fn get_info_for_god(god: &str, class: Class) -> &'static str
     {
         Melee => &BABYLONIAN_GODS,
         Ranged => &CELTIC_GODS,
-        Magic => &[("", "")]
+        Magic => &HINDU_GODS
     };
 
     for (god2, info) in gods
@@ -185,11 +266,11 @@ pub fn get_info_for_god(god: &str, class: Class) -> &'static str
 
 const SAME_GOD: [&str; 5] =
 [
-    "What's that? You also worship <god>?\nI might have something else to show you.",
-    "What's that? You also worship <god>?\nMaybe there's something else I can do for you...",
-    "I see you're a follower of <god>. Praise be.\nLet me help you with something good.",
-    "I see you've found light in the path of <god>.\nLet us share in this blessing.",
-    "Ahh. Another acolyte of <god>, greatness be.\nLet us share in this blessing."
+    "§What's that? You also worship <god>? I might have something else to show you.",
+    "§What's that? You also worship <god>? Maybe there's something else I can do for you...",
+    "§I see you're a follower of <god>. Praise be. Let me help you with something good.",
+    "§I see you've found light in the path of <god>. Let us share in this blessing.",
+    "§Ahh. Another acolyte of <god>, greatness be. Let us share in this blessing."
 ];
 
 pub fn generic_same_god_message(name: &String, god: &String) -> String
@@ -424,29 +505,29 @@ pub fn rand_npc_details() -> (&'static str, &'static str)
 
 pub const NEW_SENDER: [&str; 5] =
 [
-    "Hello? Is there someone there?∫\n\
+    "§Hello? Is there someone there? ∫0.2.∫0.2.∫0.2.∫0.5\n\
     Oh, yes. That's right. I've been expecting you.∫\n\
-    Go ahead and sit down. We have much to discuss. But\n\
+    Go ahead and sit down. We have much to discuss. But \
     before we begin, please, remind me your name.",
 
-    "Hello? Who's there?∫\n\
+    "§Hello? Who's there? ∫0.2.∫0.2.∫0.2.∫0.5\n\
     Ah, yes. Very good. I was hoping you would find me here.∫\n\
-    Please, sit down. I have big plans for us to discus, but\n\
+    Please, sit down. I have big plans for us to discus, but \
     before we can get started, do remind me your name.",
 
-    "What's that? Is someone there?∫\n\
+    "§What's that? Is someone there? ∫0.2.∫0.2.∫0.2.∫0.5\n\
     Ah, I see. Good day. I'm glad you found me here.∫\n\
-    If you don't mind, please have a seat. I can't wait to\n\
-    share my plans with you. Now, before we begin,\n\
+    If you don't mind, please have a seat. I can't wait to \
+    share my plans with you. Now, before we begin, \
     please remind me your name.",
 
-    "Hello? Is someone there?∫\n\
+    "§Hello? Is someone there? ∫0.2.∫0.2.∫0.2.∫0.5\n\
     Ah, I see. I'm glad to see you made it all the way here.∫\n\
-    If you don't mind, you should go ahead and sit down.\n\
+    If you don't mind, you should go ahead and sit down. \
     This might take us a few minutes.∫\n\
     Now, then. Let me just ask... Who do you think you are?",
 
-    "What's that? Who goes there?∫\n\
+    "§What's that? Who goes there? ∫0.2.∫0.2.∫0.2.∫0.5\n\
     Ah. Good day, there. I'm glad to see you arrived safely.∫\n\
     Now, please, do have a seat. This won't take long.∫\n\
     Let me start by asking: who exactly do you think you are?"
@@ -462,14 +543,14 @@ pub fn new_player_name(player_id: usize) -> Dialogue
     let text_handler = TextHandler
     {
         text: String::from("Enter your name:"),
-        execute: Box::new(move | args: &String |
+        execute: Box::new(move | args: &str |
         {
-            var_access::access_player_meta(player_id, | meta |
+            access::player_meta(player_id, | meta |
             {
-                meta.name = args.clone()
+                meta.name = args.to_string()
             });
         }),
-        next_dialogue: ::gen_dialogue(move || { new_player_name_confirm(player_id, 0) })
+        next_dialogue: gen_dialogue(move || { new_player_name_confirm(player_id, 0) })
     };
 
     Dialogue::handle_text
@@ -501,18 +582,18 @@ pub fn new_player_name_confirm(player_id: usize, num_corrections: u8) -> Dialogu
     let different_name = TextHandler
     {
         text: String::from("Enter a different name:"),
-        execute: Box::new(move | input: &String |
+        execute: Box::new(move | input: &str |
         {
-            var_access::access_player_meta(player_id, | meta |
+            access::player_meta(player_id, |meta |
             {
                 if num_corrections > 0
                 {
                     meta.name = rand_npc_name()
                 }
-                else { meta.name = input.clone(); }
+                else { meta.name = input.to_string(); }
             });
         }),
-        next_dialogue: ::Generate(Box::new(move ||
+        next_dialogue: Generate(Box::new(move ||
         {
             if num_corrections > 0
             {
@@ -539,7 +620,7 @@ pub fn new_player_name_confirm(player_id: usize, num_corrections: u8) -> Dialogu
 
 fn get_entered_name(player_id: usize) -> String
 {
-    var_access::access_player_meta(player_id, | meta |
+    access::player_meta(player_id, |meta |
     {
         meta.name.clone()
     })
@@ -554,34 +635,34 @@ pub fn new_player_class(player_id: usize) -> Dialogue
     {
         static ref text: Vec<&'static str> = vec!
         [
-            "Ahh, yes. \"<name>.\" I remember it well, but\n\
+            "§Ahh, yes. \"<name>.\" I remember it well, but \
             you see, it's been a long time.∫\n\
-            After all these years, you may have forgotten\n\
+            After all these years, you may have forgotten \
             my face, but yours is not one I could forget.∫\n\
-            Now, <name>, I want you to tell me:\n\
+            Now, <name>, I want you to tell me: \
             What is it that defines you?",
 
-            "Ahh, that's right. \"<name>.\" As I expected.\n\
+            "§Ahh, that's right. \"<name>.\" As I expected. \
             There was a time when we knew each other so well.∫\n\
-            But, after all these years, I suppose some memories\n\
-            fade. You may have forgotten me, <name>,\n\
+            But, after all these years, I suppose some memories \
+            fade. You may have forgotten me, <name>, \
             but I still know who you are.∫\n\
             Now, the only question is: do you?",
 
-            "Very well. You are just as I remember, <name>.\n\
-            You see, there was a time when we knew each other\n\
+            "§Very well. You are just as I remember, <name>. \
+            You see, there was a time when we knew each other \
             so well.∫\n\
-            But, I suppose some memories do fade. It's curious,\n\
-            <name>, seeing as you've changed so much and yet you\n\
+            But, I suppose some memories do fade. It's curious, \
+            <name>, seeing as you've changed so much and yet you \
             are completely unaware.∫\n\
-            I want you to think, <name>. Tell me what it is that\n\
+            I want you to think, <name>. Tell me what it is that \
             defines you.",
 
-            "I see, then. \"<name>.\" Very well.\n\
-            It's a shame to discover just how much you've forgotten.\n\
-            There was a time when we knew each other so well\n\
+            "§I see, then. \"<name>.\" Very well. \
+            It's a shame to discover just how much you've forgotten. \
+            There was a time when we knew each other so well \
             but some memories just don't last.∫\n\
-            Let us try an exercise, <name>. I want you to try and\n\
+            Let us try an exercise, <name>. I want you to try and \
             think about what it is that makes you who you are."
         ];
     }
@@ -591,12 +672,12 @@ pub fn new_player_class(player_id: usize) -> Dialogue
         text: String::from("Melee"),
         execute: Some(Box::new(move | player |
         {
-            var_access::access_player_meta(player, | meta |
+            access::player_meta(player, |meta |
             {
                 meta.class = Melee;
             });
         })),
-        next_dialogue: ::gen_dialogue(move || { new_player_god(player_id, Melee) })
+        next_dialogue: gen_dialogue(move || { new_player_god(player_id, Melee) })
     });
 
     responses.push(Response
@@ -604,12 +685,12 @@ pub fn new_player_class(player_id: usize) -> Dialogue
         text: String::from("Ranged"),
         execute: Some(Box::new(move | player |
         {
-            var_access::access_player_meta(player, | meta |
+            access::player_meta(player, |meta |
             {
                 meta.class = Ranged;
             });
         })),
-        next_dialogue: ::gen_dialogue(move || { new_player_god(player_id, Ranged) })
+        next_dialogue: gen_dialogue(move || { new_player_god(player_id, Ranged) })
     });
 
     responses.push(Response
@@ -617,12 +698,12 @@ pub fn new_player_class(player_id: usize) -> Dialogue
         text: String::from("Magic"),
         execute: Some(Box::new(move | player |
         {
-            var_access::access_player_meta(player, | meta |
+            access::player_meta(player, |meta |
             {
                 meta.class = Magic;
             });
         })),
-        next_dialogue: ::gen_dialogue(move || { new_player_god(player_id, Ranged) })
+        next_dialogue: gen_dialogue(move || { new_player_god(player_id, Magic) })
     });
 
     Dialogue::new
@@ -684,12 +765,12 @@ pub fn new_player_god(player_id: usize, class: Class) -> Dialogue
             text: god.clone(),
             execute: Some(Box::new(move |player: usize |
             {
-                var_access::access_player_meta(player, | meta |
+                access::player_meta(player, |meta |
                 {
                     meta.god = god.clone();
                 });
             })),
-            next_dialogue: ::gen_dialogue(move || { new_player_ready(player_id) })
+            next_dialogue: gen_dialogue(move || { new_player_ready(player_id) })
         });
     }
 
@@ -709,7 +790,7 @@ pub fn new_player_god(player_id: usize, class: Class) -> Dialogue
 fn new_player_ready(player_id: usize) -> Dialogue
 {
     let (god, class) =
-    var_access::access_player_meta(player_id, | player |
+    access::player_meta(player_id, |player |
     {
         (player.god.clone(), player.class)
     })
@@ -739,9 +820,9 @@ fn new_player_finished(player_id: usize) -> Dialogue
 {
     let rand_starting_town = thread_rng().gen_range(1, 4);
 
-    var_access::access_starting_area(rand_starting_town, move | area |
+    access::starting_area(rand_starting_town, move |area |
     {
-        let name = var_access::access_player_meta(player_id, | player |
+        let name = access::player_meta(player_id, |player |
         {
             player.name.clone()
         })
@@ -751,6 +832,6 @@ fn new_player_finished(player_id: usize) -> Dialogue
         player.give_money(1000);
 
         area.add_entity(player);
-        area.get_dialogue_for_player(player_id)
+        area.get_dialogue(player_id)
     })
 }

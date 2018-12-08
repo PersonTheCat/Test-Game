@@ -1,6 +1,5 @@
-use traits::{ Area, Entity };
-
-use text;
+use crate::traits::{ Area, Entity };
+use crate::text;
 
 use std::cell::RefCell;
 

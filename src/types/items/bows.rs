@@ -1,7 +1,8 @@
-use traits::{ Weapon, Item };
-use types::items::{ self, display_info::ItemDisplayInfo };
+use crate::traits::{ Weapon, Item };
+use crate::types::items::{ self, display_info::ItemDisplayInfo };
 
 use std::cell::Cell;
+
 
 /**
  * There's only one of each item type.

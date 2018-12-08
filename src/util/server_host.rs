@@ -9,15 +9,15 @@ use std::io;
 use yyid::yyid_string;
 use hashbrown::HashMap;
 
-use ::ChannelInfo::Remote;
-use GameMessage;
+use crate::ChannelInfo::Remote;
+use crate::GameMessage;
 
 /**
  * To-do: Implement passwords using password-hashing (crate).
  */
 
-/** Slightly faster than the main game loop. */
-const REFRESH_RATE: u64 = 50;//(::MS_BETWEEN_UPDATES * 2 / 3) as u64;
+/** Much faster than the main game loop -> lower latency. */
+const REFRESH_RATE: u64 = 50;
 const MSG_SIZE: usize = 256;
 const MAX_USERS: usize = 8;
 const MAX_VISITORS: usize = 8;
@@ -31,17 +31,20 @@ type Clients = HashMap<String, (SocketAddr, TcpStream)>;
 /** A map of token -> username */
 type Tokens = HashMap<String, String>;
 
+/** Message, address it was sent from; might be local. */
+struct MessageData(String, Option<SocketAddr>);
+
 /**
  * Only accessed by the game thread.
  * Should be safe without a mutex.
  */
-static mut LOCAL_TX: Option<Sender<String>> = None;
+static mut LOCAL_TX: Option<Sender<MessageData>> = None;
 
 pub fn send_message_to_client(username: &str, msg: &str)
 {
     unsafe { if let Some(ref tx) = LOCAL_TX
     {
-        tx.send(format!("OUTGOING\nUSER|{}\nMSG|{}", username, msg))
+        tx.send(MessageData(format!("OUTGOING\nUSER|{}\nMSG|{}", username, msg), None))
             .expect("Unable to send message to server.");
     }
     else { panic!("Local transmitter was not initialized."); }}
@@ -58,14 +61,14 @@ pub fn init_listener(sender: Sender<GameMessage>)
     listener.set_nonblocking(true)
         .expect("Error setting listener as non-blocking.");
 
-    let (server_tx, server_rx) = mpsc::channel::<String>();
+    let (server_tx, server_rx) = mpsc::channel::<MessageData>();
 
     unsafe { LOCAL_TX = Some(server_tx.clone()); }
 
     start_server(listener, server_tx, server_rx, sender);
 }
 
-fn start_server(listener: TcpListener, server_tx: Sender<String>, server_rx: Receiver<String>, game_tx: Sender<GameMessage>)
+fn start_server(listener: TcpListener, server_tx: Sender<MessageData>, server_rx: Receiver<MessageData>, game_tx: Sender<GameMessage>)
 {
     let mut visitors: Visitors = Vec::new();
     let mut clients: Clients = HashMap::new();
@@ -86,13 +89,14 @@ fn start_server(listener: TcpListener, server_tx: Sender<String>, server_rx: Rec
 
             if visitors.len() > MAX_VISITORS
             {
-                let msg = format!("LOGIN_ERR\nREASON|MAX_VISITORS");
-                write_directly(&msg, &mut socket)
-                    .expect("Error writing to socket.")
+                /** There were too many users waiting to log in. */
+                write_directly("LOGIN_ERR\nREASON|MAX_VISITORS", &mut socket)
+                    .expect("Error writing to socket.");
+                continue;
             }
 
             /** The user's IP will serve as a temporary identifier. */
-            write_directly(&format!("ESTABLISH\nADDR|{}", address), &mut socket)
+            write_directly("ESTABLISH", &mut socket)
                 .expect("Error writing to socket.");
 
             visitors.push((address, socket));
@@ -107,7 +111,7 @@ fn start_server(listener: TcpListener, server_tx: Sender<String>, server_rx: Rec
 
         if let Ok(msg) = server_rx.try_recv()
         {
-            match handle_incoming_message(&msg, &mut visitors, &mut clients, &mut tokens, &server_tx, &game_tx)
+            match handle_incoming_message(msg, &mut visitors, &mut clients, &mut tokens, &server_tx, &game_tx)
             {
                 Ok(_o) => (), //println!("Ok: {}", o),
                 Err(e) => println!("Err: {}", e)
@@ -118,7 +122,7 @@ fn start_server(listener: TcpListener, server_tx: Sender<String>, server_rx: Rec
     }
 }
 
-fn spawn_client_thread(mut socket: TcpStream, address: SocketAddr, user_tx: Sender<String>)
+fn spawn_client_thread(mut socket: TcpStream, address: SocketAddr, user_tx: Sender<MessageData>)
 {
     thread::spawn(move || loop
     {
@@ -130,7 +134,7 @@ fn spawn_client_thread(mut socket: TcpStream, address: SocketAddr, user_tx: Send
     });
 }
 
-fn handle_reads(socket: &mut TcpStream, address: &SocketAddr, server_tx: &Sender<String>) -> io::Result<()>
+fn handle_reads(socket: &mut TcpStream, address: &SocketAddr, server_tx: &Sender<MessageData>) -> io::Result<()>
 {
     let mut buf = vec![0; MSG_SIZE];
 
@@ -142,10 +146,10 @@ fn handle_reads(socket: &mut TcpStream, address: &SocketAddr, server_tx: &Sender
                 .take_while(| b | *b != 0)
                 .collect();
             let msg = String::from_utf8(msg)
-                .expect("Client send an invalid utf8 message.");
+                .expect("Client sent an invalid utf8 message.");
 
 //            println!("{}: {:?}", address, msg.replace("\n", "|"));
-            server_tx.send(msg)
+            server_tx.send(MessageData(msg, Some(address.clone())))
                 .expect("Failed to send user message");
         }
         Err(ref e) if e.kind() == WouldBlock => (),
@@ -154,9 +158,9 @@ fn handle_reads(socket: &mut TcpStream, address: &SocketAddr, server_tx: &Sender
     Ok(())
 }
 
-fn handle_incoming_message(msg: &str, visitors: &mut Visitors, clients: &mut Clients, tokens: &mut Tokens, server_tx: &Sender<String>, game_tx: &Sender<GameMessage>) -> Result<&'static str, &'static str>
+fn handle_incoming_message(msg: MessageData, visitors: &mut Visitors, clients: &mut Clients, tokens: &mut Tokens, server_tx: &Sender<MessageData>, game_tx: &Sender<GameMessage>) -> Result<&'static str, &'static str>
 {
-    let mut lines = msg.lines();
+    let mut lines = msg.0.lines();
 
     let msg_type = match lines.next()
     {
@@ -168,8 +172,8 @@ fn handle_incoming_message(msg: &str, visitors: &mut Visitors, clients: &mut Cli
     {
         "OUTGOING" => outgoing_message(lines, clients),
         "STANDARD" => standard_message(lines, tokens, game_tx),
-        "REGISTER" => register_user(lines, visitors, clients, tokens, server_tx),
-        _ => {Err("")}
+        "REGISTER" => register_user(lines, &msg, visitors, clients, tokens, server_tx),
+        _ => Err("Unregistered message header")
     }
 }
 
@@ -263,50 +267,34 @@ fn standard_message(mut lines: Lines, tokens: &Tokens, game_tx: &Sender<GameMess
  * ```
  * REGISTER
  * USER|my_username
- * ADDR|0.0.0.0:0000
  * ```
  * To-do: Include a password.
  */
-fn register_user(mut lines: Lines, visitors: &mut Visitors, clients: &mut Clients, tokens: &mut Tokens, server_tx: &Sender<String>) -> Result<&'static str, &'static str>
+fn register_user(mut lines: Lines, data: &MessageData, visitors: &mut Visitors, clients: &mut Clients, tokens: &mut Tokens, server_tx: &Sender<MessageData>) -> Result<&'static str, &'static str>
 {
     let username = match lines.next()
     {
         Some(s) if s.starts_with("USER|") => s[5..].to_string(),
         _ => return Err("Register call was sent incorrectly.")
     };
-    let address: SocketAddr = match lines.next()
-    {
-        Some(s) if s.starts_with("ADDR|") => match s[5..].parse()
-        {
-            Ok(a) => a,
-            Err(_) => return Err("Unable to parse client address.")
-        },
-        _ => return Err("Register call was sent incorrectly.")
-    };
+    let address = data.1
+        .expect("A register call did not contain the user's address.");
 
     if tokens.len() >= MAX_USERS
     {
-        let response = String::from(
-            "LOGIN_ERR\n\
-            REASON|CAPACITY"
-        );
-
-        write_to_visitor(&response, address, visitors);
+        /** Too many users are currently logged in. */
+        write_to_visitor("LOGIN_ERR\nREASON|CAPACITY", address, visitors);
         Err("There were too many users logged in.")
     }
     else if is_logged_in(&username, clients)
     {
-        let response = String::from(
-            "LOGIN_ERR\n\
-            REASON|TAKEN" //This username is already taken. Try a different one."
-        );
-
-        write_to_visitor(&response, address, visitors);
+        /** The username was already taken. */
+        write_to_visitor("LOGIN_ERR\nREASON|TAKEN", address, visitors);
         Err("Username was already taken.")
     }
     else
     {
-        let new_client = match locate_visitor(address, visitors)
+        let new_client = match locate_visitor(&address, visitors)
         {
             Some(v) => v,
             None => return Err("Client disconnected before registration.")
@@ -368,23 +356,16 @@ fn write_to_visitor(msg: &str, address: SocketAddr, visitors: &mut Visitors)
             };
         }
     }
-
     if let Some(index) = remove_index
     {
         visitors.remove(index);
     }
 }
 
-/**
- * Splits the message into smaller packets
- * when the size overflows. This is very
- * noticeable.
- */
 fn write_directly(msg: &str, stream: &mut TcpStream) -> Result<(), io::Error>
 {
     stream.write(msg.as_bytes())?;
-    stream.flush().expect("We'll see about that!");
-
+    stream.flush()?;
     Ok(())
 }
 
@@ -393,10 +374,10 @@ fn is_logged_in(username: &str, clients: &Clients) -> bool
     clients.contains_key(username)
 }
 
-fn locate_visitor(address: SocketAddr, visitors: &mut Visitors) -> Option<(SocketAddr, TcpStream)>
+fn locate_visitor(address: &SocketAddr, visitors: &mut Visitors) -> Option<(SocketAddr, TcpStream)>
 {
     let index = visitors.iter()
-        .position(| (a, _) | *a == address);
+        .position(| (a, _) | *a == *address);
 
     match index
     {

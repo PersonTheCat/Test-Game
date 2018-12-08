@@ -1,10 +1,12 @@
+use crate::util::timed_events::{ DelayHandler, DelayedEvent };
+use crate::util::access::{self, EntityAccessor };
+use crate::messages::MessageComponent::*;
+use crate::text;
+use crate::*;
+
 use std::iter::FromIterator;
 
-use timed_events::{ DelayHandler, DelayedEvent };
-use var_access::{ self, EntityAccessor };
 use rand::{ thread_rng, random, Rng };
-use messages::MessageComponent::*;
-use text;
 
 use self::DialogueOption::*;
 use self::DialogueResult::*;
@@ -30,7 +32,7 @@ pub fn register_options(options: Dialogue)
     }; }
 }
 
-pub fn delete_options(option_id: usize) -> bool
+pub fn delete_options(option_id: usize) -> Option<Dialogue>
 {
     unsafe { match CURRENT_OPTIONS
     {
@@ -43,15 +45,14 @@ pub fn delete_options(option_id: usize) -> bool
             {
                 if o[num].player_id == GLOBAL_USER
                 {
-                    return false;
+                    return None;
                 }
-                o.remove(num);
-                return true;
+                return Some(o.remove(num));
             }
         },
         None => panic!("Error: Options registry not yet initialized.")
     }; }
-    false
+    None
 }
 
 /**
@@ -112,10 +113,11 @@ pub fn send_current_options(to_player: usize)
             {
                 options_text += "\n";
                 options_text += &option.get_display(first_response);
+
+                first_response += option.responses.len();
             }
-            first_response += option.responses.len();
         }
-        ::send_message_to_player(to_player, Options, &options_text, 0);
+        send_message_to_player(to_player, Options, &options_text, 0);
     }
     else { panic!("Error: Option registry not established in time."); }}
 }
@@ -133,19 +135,20 @@ pub fn update_options_manually(for_player: usize)
             {
                 options_text += "\n";
                 options_text += &option.get_display(first_response);
+
+                first_response += option.responses.len();
             }
-            first_response += option.responses.len();
         }
-        ::update_player_message(for_player, Options, &options_text);
+        update_player_message(for_player, Options, &options_text);
     }
     else { panic!("Error: Option registry not established in time."); }}
 }
 
 pub fn get_send_area_options(player_id: usize)
 {
-    let new_options = var_access::access_player_context(player_id, | player, _, area, _ |
+    let new_options = access::player_context(player_id, | player, _, area, _ |
     {
-        area._get_dialogue_for_player(player)
+        area._get_dialogue(player)
     })
     .expect("Player data no longer exists.");
 
@@ -153,18 +156,75 @@ pub fn get_send_area_options(player_id: usize)
     send_current_options(player_id);
 }
 
+pub fn get_player_for_options(option_id: usize) -> Option<usize>
+{
+    unsafe { match CURRENT_OPTIONS
+    {
+        Some(ref mut o) =>
+        {
+            for option in o.iter()
+            {
+                if option.id == option_id { return Some(option.player_id) }
+            }
+        },
+        None => panic!("Error: Options registry not yet initialized.")
+    }}
+    None
+}
+
 pub fn replace_send_options(player_id: usize, old_options: usize, new_options: Dialogue)
 {
-    delete_options(old_options);
+    if let Some(options) = delete_options(old_options)
+    {
+        if player_id != options.player_id
+        {
+            println!(
+                "Debug: A call was somehow sent to replace dialogue\n\
+                for one player with that of another. This message\n\
+                Is temporary and should be fixed.\n\
+                From id:{}\n\
+                To id:{}",
+                options.player_id,
+                player_id
+            );
+            register_options(options);
+            return;
+        }
+    }
     register_options(new_options);
     send_current_options(player_id);
 }
 
 pub fn replace_no_send_options(player_id: usize, old_options: usize, new_options: Dialogue)
 {
-    delete_options(old_options);
+    if let Some(options) = delete_options(old_options)
+    {
+        if player_id != options.player_id
+        {
+            println!(
+                "Debug: A call was somehow sent to replace dialogue\n\
+                for one player with that of another. This message\n\
+                Is temporary and should be fixed.\n\
+                From id:{}\n\
+                To id:{}",
+                options.player_id,
+                player_id
+            );
+            register_options(options);
+            return;
+        }
+    }
     register_options(new_options);
     update_options_manually(player_id);
+}
+
+pub fn try_refresh_options(player_id: usize) -> bool
+{
+    match try_delete_options(player_id)
+    {
+        Ok(_) => { get_send_area_options(player_id); true }
+        Err(_) => false
+    }
 }
 
 pub enum DialogueResult
@@ -372,7 +432,7 @@ impl Dialogue
 
         if temporary
         {
-            Dialogue::delete_in(player_id, id, ::TEMP_DIALOGUE_DURATION);
+            Dialogue::delete_in(player_id, id, TEMP_DIALOGUE_DURATION);
         }
 
         Dialogue
@@ -455,11 +515,11 @@ impl Dialogue
 
     pub fn from_area(player_id: usize) -> Dialogue
     {
-        var_access::access_player_meta(player_id, | meta |
+        access::player_meta(player_id, |meta |
         {
-            var_access::access_area(meta.coordinates, | area |
+            access::area(meta.coordinates, |area |
             {
-                area.get_dialogue_for_player(player_id)
+                area.get_dialogue(player_id)
             })
             .expect("Area no longer exists.")
         })
@@ -486,7 +546,7 @@ impl Dialogue
         self.run_as_user(args, self.player_id, first_response)
     }
 
-    pub fn run_as_user(&self, args: &String, player_id: usize, first_response: usize) -> DialogueResult
+    pub fn run_as_user(&self, args: &str, player_id: usize, first_response: usize) -> DialogueResult
     {
         let mut split = args.split_whitespace();
 
@@ -580,7 +640,7 @@ impl Dialogue
     {
         DelayedEvent::no_flags(delay_ms,move ||
         {
-            if delete_options(option_id)
+            if let Some(_) = delete_options(option_id)
             {
                 send_current_options(player_id);
             }
@@ -599,7 +659,7 @@ pub struct Response
 
 impl Response
 {
-    pub fn new<F1, F2>(text: &'static str, run: F1, then: F2) -> Response
+    pub fn new<F1, F2>(text: &str, run: F1, then: F2) -> Response
         where F1: Fn(usize) + 'static, F2: Fn() -> Dialogue + 'static
     {
         Response
@@ -610,7 +670,7 @@ impl Response
         }
     }
 
-    pub fn simple<F>(text: &'static str, run: F) -> Response
+    pub fn simple<F>(text: &str, run: F) -> Response
         where F: Fn(usize) + 'static
     {
         Self::_simple(String::from(text), run)
@@ -627,7 +687,7 @@ impl Response
         }
     }
 
-    pub fn action_only<F>(text: &'static str, run: F) -> Response
+    pub fn action_only<F>(text: &str, run: F) -> Response
         where F: Fn(usize) + 'static
     {
         Self::_action_only(String::from(text), run)
@@ -644,7 +704,7 @@ impl Response
         }
     }
 
-    pub fn delete_dialogue<F>(text: &'static str, run: F) -> Response
+    pub fn delete_dialogue<F>(text: &str, run: F) -> Response
         where F: Fn(usize) + 'static
     {
         Self::_delete_dialogue(String::from(text), run)
@@ -661,7 +721,7 @@ impl Response
         }
     }
 
-    pub fn text_only(text: &'static str) -> Response
+    pub fn text_only(text: &str) -> Response
     {
         Self::_text_only(String::from(text))
     }
@@ -676,7 +736,7 @@ impl Response
         }
     }
 
-    pub fn goto_dialogue<F>(text: &'static str, next_dialogue: F) -> Response
+    pub fn goto_dialogue<F>(text: &str, next_dialogue: F) -> Response
         where F: Fn() -> Dialogue + 'static
     {
         Self::_goto_dialogue(String::from(text), next_dialogue)
@@ -696,7 +756,7 @@ impl Response
         }
     }
 
-    pub fn get_entity_dialogue(text: &'static str, accessor: EntityAccessor, player_id: usize) -> Response
+    pub fn get_entity_dialogue(text: &str, accessor: EntityAccessor, player_id: usize) -> Response
     {
         Self::_get_entity_dialogue(String::from(text), accessor, player_id)
     }
@@ -709,15 +769,15 @@ impl Response
             execute: None,
             next_dialogue: Generate(Box::new(move ||
             {
-                match var_access::access_entity(accessor, | e |
+                match access::entity(accessor, |e |
                 {
-                    e.get_dialogue_for_player(player_id).expect("Expected this function to return Dialogue.")
+                    e.get_dialogue(player_id).expect("Expected this function to return Dialogue.")
                 }){
                     Some(dialogue) => dialogue,
-                    None => var_access::access_area(accessor.coordinates, | a |
+                    None => access::area(accessor.coordinates, |a |
                     {
-                        ::add_short_message(player_id, &String::from("They got bored and walked away."));
-                        a.get_dialogue_for_player(player_id)
+                        add_short_message(player_id, &String::from("They got bored and walked away."));
+                        a.get_dialogue(player_id)
                     })
                     .expect("Area no longer exists")
                 }
@@ -725,7 +785,7 @@ impl Response
         }
     }
 
-    pub fn goto_entity_dialogue(text: &'static str, marker: u8, accessor: EntityAccessor, player_id: usize) -> Response
+    pub fn goto_entity_dialogue(text: &str, marker: u8, accessor: EntityAccessor, player_id: usize) -> Response
     {
         Self::_goto_entity_dialogue(String::from(text), marker, accessor, player_id)
     }
@@ -738,15 +798,15 @@ impl Response
             execute: None,
             next_dialogue: Generate(Box::new(move ||
             {
-                match var_access::access_entity(accessor, | e |
+                match access::entity(accessor, |e |
                 {
-                    e.goto_dialogue_for_player(marker, player_id).expect("Expected this function to return Dialogue.")
+                    e.goto_dialogue(marker, player_id).expect("Expected this function to return Dialogue.")
                 }){
                     Some(dialogue) => dialogue,
-                    None => var_access::access_area(accessor.coordinates, | a |
+                    None => access::area(accessor.coordinates, |a |
                     {
-                        ::add_short_message(player_id, &String::from("They got bored and walked away."));
-                        a.get_dialogue_for_player(player_id)
+                        add_short_message(player_id, &String::from("They got bored and walked away."));
+                        a.get_dialogue(player_id)
                     })
                     .expect("Area no longer exists")
                 }
@@ -784,9 +844,9 @@ impl Response
                 register_options(dialogue);
                 update_options_manually(player_id);
 
-                ::send_blocking_message(player_id, txt, ::TEXT_SPEED);
+                send_blocking_message(player_id, txt, TEXT_SPEED);
             }
-            else { ::replace_send_options(player_id, current_dialogue.id, dialogue); }
+            else { replace_send_options(player_id, current_dialogue.id, dialogue); }
         }
     }
 }
@@ -895,9 +955,9 @@ impl Command
                 register_options(dialogue);
                 update_options_manually(player_id);
 
-                ::send_blocking_message(player_id, txt, ::TEXT_SPEED);
+                send_blocking_message(player_id, txt, TEXT_SPEED);
             }
-            else { ::replace_send_options(player_id, current_dialogue.id, dialogue); }
+            else { replace_send_options(player_id, current_dialogue.id, dialogue); }
         }
     }
 
@@ -910,13 +970,13 @@ impl Command
 pub struct TextHandler
 {
     pub text: String,
-    pub execute: Box<Fn(&String)>,
+    pub execute: Box<Fn(&str)>,
     pub next_dialogue: DialogueOption
 }
 
 impl TextHandler
 {
-    pub fn run(&self, player_id: usize, args: &String, current_dialogue: &Dialogue)
+    pub fn run(&self, player_id: usize, args: &str, current_dialogue: &Dialogue)
     {
         (self.execute)(args);
 
@@ -943,9 +1003,9 @@ impl TextHandler
                 register_options(dialogue);
                 update_options_manually(player_id);
 
-                ::send_blocking_message(player_id, txt, ::TEXT_SPEED);
+                send_blocking_message(player_id, txt, TEXT_SPEED);
             }
-            else { ::replace_send_options(player_id, current_dialogue.id, dialogue); }
+            else { replace_send_options(player_id, current_dialogue.id, dialogue); }
         }
     }
 }

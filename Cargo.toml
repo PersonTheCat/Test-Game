@@ -1,8 +1,9 @@
 [package]
 
 name = "test_game"
-version = "0.1.1"
+version = "0.1.2"
 authors = ["PersonTheCat <33143148+PersonTheCat@users.noreply.github.com>"]
+edition = "2018"
 
 [features]
 

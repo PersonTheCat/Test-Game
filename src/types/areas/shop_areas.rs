@@ -1,7 +1,8 @@
-use types::entities::npcs::{ Shopkeeper, NPC };
-use traits::{ Area, Entity };
-use types::classes::Class;
-use text;
+use crate::types::entities::npcs::{ Shopkeeper, NPC };
+use crate::traits::{ Area, Entity };
+use crate::types::classes::Class;
+use crate::text;
+use crate::*;
 
 use std::cell::RefCell;
 use regex::Regex;
@@ -30,11 +31,11 @@ static WALK_IN: [&'static str; 6] =
 ];
 static SEE_BARTENDER: [&'static str; 5] =
 [
-    "\nas well as the bartender, <name>, standing nearby.",
-    "\nand the bartender, <name>, behind the counter.",
-    "\nand also <name>, the owner, standing nearby.",
-    "\nand even <name>, the owner of the pub.",
-    "\nas well as the bartender, <name>."
+    " as well as the bartender, <name>, standing nearby.",
+    " and the bartender, <name>, behind the counter.",
+    " and also <name>, the owner, standing nearby.",
+    " and even <name>, the owner of the pub.",
+    " as well as the bartender, <name>."
 ];
 
 #[derive(EntityHolder, AreaTools)]
@@ -90,7 +91,8 @@ impl Area for Pub
     {
         let entities = self.entities.borrow();
         let mut index = 0;
-        let mut text = ::choose(&WALK_IN).to_string();
+        let mut text = String::from("§"); // Start in auto-break mode.
+        text += *choose(&WALK_IN);
 
         for entity in entities.iter()
             .filter(| e | e.get_type() == "npc")
@@ -101,10 +103,10 @@ impl Area for Pub
                 .expect("NPCs must have descriptions");
             let article = if starts_with_vowel(description) { "an" } else { "a" };
 
-            text += &format!("\n{} {} {},", article, description, location);
+            text += &format!(" {} {} {},", article, description, location);
             index += 1;
         }
-        let bartender = ::choose(&SEE_BARTENDER);
+        let bartender = choose(&SEE_BARTENDER);
         let replacements = vec![("<name>", self.owner_name.clone())];
         text += &text::apply_replacements(bartender, &replacements);
 

@@ -1,6 +1,6 @@
-use types::items::display_info::ItemDisplayInfo;
-use traits::{Item, ItemTools, Entity, Area };
-use types::effects::Effect;
+use crate::types::items::display_info::ItemDisplayInfo;
+use crate::traits::{Item, ItemTools, Entity, Area };
+use crate::types::effects::Effect;
 
 use std::cell::Cell;
 use std::any::Any;

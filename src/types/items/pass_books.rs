@@ -1,5 +1,5 @@
-use types::items::display_info::ItemDisplayInfo;
-use traits::Item;
+use crate::types::items::display_info::ItemDisplayInfo;
+use crate::traits::Item;
 
 use std::cell::RefCell;
 

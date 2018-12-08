@@ -1,4 +1,4 @@
-pub mod var_access;
+pub mod access;
 pub mod player_options;
 pub mod timed_events;
 pub mod directions;

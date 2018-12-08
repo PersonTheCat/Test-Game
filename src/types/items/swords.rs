@@ -1,6 +1,6 @@
-use types::items::{ self, display_info::ItemDisplayInfo };
-use types::effects::{ Effect, EffectType::* };
-use traits::{ Weapon, Item, Entity, Area };
+use crate::types::items::{ self, display_info::ItemDisplayInfo };
+use crate::types::effects::{ Effect, EffectType::* };
+use crate::traits::{ Weapon, Item, Entity, Area };
 
 use std::cell::{ Cell, RefCell };
 

@@ -1,15 +1,15 @@
-use std::cell::Cell;
-
-use types::items::shops::{ PersistentShop, BlacksmithShop };
-use types::items::consumables::Consumable;
-use player_options::{ Dialogue, Response };
-use player_data::PlayerMeta;
-use types::classes::Class;
-use traits::Entity;
-use traits::Shop;
-use text;
+use crate::types::items::shops::{ PersistentShop, BlacksmithShop };
+use crate::types::items::consumables::Consumable;
+use crate::util::player_options::{ Dialogue, Response };
+use crate::player_data::PlayerMeta;
+use crate::types::classes::Class;
+use crate::traits::Entity;
+use crate::traits::Shop;
+use crate::text;
 
 use rand::random;
+
+use std::cell::Cell;
 
 const NORMAL_DIALOGUE: u8 = 0;
 const TRADES: u8 = 1;
@@ -117,7 +117,7 @@ impl NPC
      */
     fn get_normal_trades(&self, player: &mut PlayerMeta) -> Dialogue
     {
-        self.food_trades.get_dialogue_for_player(player, true, 1.0)
+        self.food_trades.get_dialogue(player, true, 1.0)
     }
 
     /**
@@ -125,7 +125,7 @@ impl NPC
      */
     fn get_special_trades(&self, player: &mut PlayerMeta) -> Dialogue
     {
-        self.special_trades.get_dialogue_for_player(player, false, 1.0)
+        self.special_trades.get_dialogue(player, false, 1.0)
     }
 }
 
@@ -141,7 +141,7 @@ impl Entity for NPC
 
     fn get_health(&self) -> u32 { 10 }
 
-    fn get_response_text_for_player(&self, player: &mut PlayerMeta) -> Option<String>
+    fn get_response_text(&self, player: &mut PlayerMeta) -> Option<String>
     {
         let ret = if player.has_entity_knowledge(self.id)
         {
@@ -156,7 +156,7 @@ impl Entity for NPC
         Some(ret)
     }
 
-    fn _get_dialogue_for_player(&self, player: &mut PlayerMeta) -> Option<Dialogue>
+    fn _get_dialogue(&self, player: &mut PlayerMeta) -> Option<Dialogue>
     {
         let marker = match player.get_entity_knowledge(self.id)
         {
@@ -168,10 +168,10 @@ impl Entity for NPC
             player.add_entity_knowledge(self.id);
             Some(self.get_main_dialogue(player, true))
         }
-        else { self._goto_dialogue_for_player(marker as u8, player) }
+        else { self._goto_dialogue(marker as u8, player) }
     }
 
-    fn _goto_dialogue_for_player(&self, marker: u8, player: &mut PlayerMeta) -> Option<Dialogue>
+    fn _goto_dialogue(&self, marker: u8, player: &mut PlayerMeta) -> Option<Dialogue>
     {
         match marker
         {

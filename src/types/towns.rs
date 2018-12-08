@@ -1,4 +1,4 @@
-use types::{
+use crate::types::{
     classes::{ self, Class },
     areas::paths::Path,
     areas::gates::Gate,
@@ -6,9 +6,11 @@ use types::{
     areas::area_settings::PathPreference::*
 };
 
-use player_data::PlayerMeta;
-use traits::Area;
-use var_access;
+use crate::player_data::PlayerMeta;
+use crate::traits::Area;
+use crate::util::access;
+use crate::*;
+
 use self::Direction::*;
 
 use std::cell::Cell;
@@ -180,7 +182,7 @@ impl Town
 
     pub fn get_map_for_player(&self, player_id: usize) -> String
     {
-        var_access::access_player_meta(player_id, | player |
+        access::player_meta(player_id, |player |
         {
             self._get_map_for_player(player)
         })
@@ -570,7 +572,7 @@ fn get_next_dir(current_dir: Direction, previous_dir: Direction) -> Direction
             {
                 Forward =>
                 {
-                    *::choose(&[Left, Right])
+                    *choose(&[Left, Right])
                 },
                 Left => Left,
                 Right => Right

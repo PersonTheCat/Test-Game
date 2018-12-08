@@ -1,8 +1,8 @@
-use player_options::Response;
-use traits::{ Area, Entity };
-use player_data::PlayerMeta;
-use types::classes::Class;
-use var_access;
+use crate::util::player_options::Response;
+use crate::traits::{ Area, Entity };
+use crate::player_data::PlayerMeta;
+use crate::types::classes::Class;
+use crate::util::access;
 
 use std::cell::RefCell;
 
@@ -47,31 +47,31 @@ impl Area for Gate
         if self.is_end_gate()
         {
             Some(String::from(
-                "You notice that your path concludes at a familiar gate and\n\
+                "§You notice that your path concludes at a familiar gate and \
                  begin to wonder if there is some sort of key."))
         }
         else if self.is_starting_town()
         {
             Some(String::from(
-                "As you gaze upon the sealed grounds that mark the beginning\n\
-                of your journey, you reflect upon your new life which has\n\
+                "§As you gaze upon the sealed grounds that mark the beginning \
+                of your journey, you reflect upon your new life which has \
                 forever changed."))
         }
         else { Some(String::from(
-            "You arrive in front a tall, locked gate, wondering only\n\
+            "§You arrive in front a tall, locked gate, wondering only \
             if you can return from whence you came.")) }
     }
 
     fn get_title(&self) -> String
     {
-        if var_access::access_town(self.get_town_num(), | t | t.unlocked() )
+        if access::town(self.get_town_num(), |t | t.unlocked() )
         {
             String::from("Gate")
         }
         else { String::from("Locked Gate") }
     }
 
-    fn get_specials_for_player(&self, player: &mut PlayerMeta, responses: &mut Vec<Response>)
+    fn get_specials(&self, player: &mut PlayerMeta, responses: &mut Vec<Response>)
     {
         let player_id = player.player_id;
         let current_area = self.coordinates;
@@ -82,12 +82,12 @@ impl Area for Gate
 
             responses.push(Response::goto_dialogue("Test going to the next area", move ||
             {
-                var_access::access_area(current_area, | old_area |
+                access::area(current_area, |old_area |
                 {
-                    var_access::access_starting_area(next_town, | new_area |
+                    access::starting_area(next_town, |new_area |
                     {
                         old_area.transfer_to_area(player_id, new_area);
-                        new_area.get_dialogue_for_player(player_id)
+                        new_area.get_dialogue(player_id)
                     })
                 })
                 .expect("The player's current area could not be relocated.")
@@ -99,14 +99,14 @@ impl Area for Gate
 
             responses.push(Response::goto_dialogue("Test going to the previous area", move ||
             {
-                var_access::access_area(current_area, | old_area |
+                access::area(current_area, |old_area |
                 {
-                    var_access::access_town(previous_town, | town |
+                    access::town(previous_town, |town |
                     {
-                        var_access::access_area(town.end_gate(), | new_area |
+                        access::area(town.end_gate(), |new_area |
                         {
                             old_area.transfer_to_area(player_id, new_area);
-                            new_area.get_dialogue_for_player(player_id)
+                            new_area.get_dialogue(player_id)
                         })
                         .expect("Invalid town # or gate coordinates.")
                     })

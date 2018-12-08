@@ -1,13 +1,14 @@
-use std::cmp::Ordering::{ self, * };
-
-use messages::{ ReusableMessage, ChannelInfo };
-use types::classes::Class::{ self, * };
-use util::var_access::EntityAccessor;
-use ::GameMessage;
-use text;
+use crate::messages::{ ReusableMessage, ChannelInfo };
+use crate::types::classes::Class::{ self, * };
+use crate::util::access::EntityAccessor;
+use crate::GameMessage;
+use crate::text;
+use crate::*;
 
 use hashbrown::HashMap;
 use rand::random;
+
+use std::cmp::Ordering::{ self, * };
 
 pub static mut PLAYER_META: Option<Vec<PlayerMeta>> = None;
 
@@ -36,7 +37,7 @@ impl PlayerMeta
 {
     pub fn update_message(&mut self)
     {
-        ::send_message_to_channel(&self.channel, &mut self.reusable_message, 0);
+        send_message_to_channel(&self.channel, &mut self.reusable_message, 0);
     }
 
     pub fn get_accessor(&self) -> EntityAccessor
@@ -163,9 +164,9 @@ pub fn new_player_event(message: &GameMessage)
     };
     register_player_meta(new);
 
-    ::register_options(text::new_player_name(player_id));
-    ::update_options_manually(player_id);
-    ::send_blocking_message(player_id, text::rand_new_sender(), ::TEXT_SPEED);
+    register_options(text::new_player_name(player_id));
+    update_options_manually(player_id);
+    send_blocking_message(player_id, text::rand_new_sender(), TEXT_SPEED);
 }
 
 pub fn register_player_meta(meta: PlayerMeta)

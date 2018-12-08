@@ -7,11 +7,6 @@
 
 #[macro_use]
 extern crate lazy_static;
-extern crate rand;
-extern crate hashbrown;
-extern crate array_init;
-extern crate regex;
-
 #[macro_use]
 extern crate test_game_derive;
 
@@ -26,26 +21,27 @@ pub mod player_data;
  * Very common methods
  */
 
-pub use player_options::DialogueOption::*;
-pub use text::choose;
-pub use player_options::*;
-pub use messages::*;
+//pub use test_game_derive::{ ItemTools, AreaTools, EntityHolder };
+pub use self::player_options::DialogueOption::*;
+pub use self::text::choose;
+pub use self::player_options::*;
+pub use self::messages::*;
 
 /**
  * Normal imports
  */
 
-use util::{
-    var_access::{ self, EntityAccessor },
-    player_options::{self, DialogueResult::* },
+use self::util::{
+    access::{ self, EntityAccessor },
+    player_options::{ self, DialogueResult::* },
     timed_events
 };
 
-use types::areas::area_settings;
-use types::items::item_settings;
-use messages::ChannelInfo::*;
-use player_data::PlayerMeta;
-use types::towns;
+use self::types::areas::area_settings;
+use self::types::items::item_settings;
+use self::messages::ChannelInfo::*;
+use self::player_data::PlayerMeta;
+use self::types::towns;
 
 use std::{
     time::SystemTime,
@@ -60,25 +56,20 @@ use std::{
  */
 
 #[cfg(feature = "discord")]
-extern crate serenity;
-#[cfg(feature = "discord")]
-use util::discord_bot::Bot;
+use self::util::discord_bot::Bot;
 #[cfg(feature = "remote_clients")]
-extern crate parking_lot;
-#[cfg(feature = "remote_clients")]
-extern crate yyid;
-#[cfg(feature = "remote_clients")]
-use util::server_host;
+use self::util::server_host;
 
 /**
  * Settings.
  */
 
 const UPDATES_PER_SECOND: u16 = 10;
-const NUM_SPACES: u8 = 50;
+const NUM_SPACES: u8 = 50; // Separate by lines until a TUI is implemented.
 const MAX_SHORT_MESSAGES: usize = 3;
-pub const TEXT_SPEED: u64 = 500;
+pub const TEXT_SPEED: u64 = 1500;
 pub const TEMP_DIALOGUE_DURATION: u64 = 20_000;
+pub const LINE_LENGTH: usize = 40;
 const PRINT_FRAMES: bool = false;
 const CHEATS_ENABLED: bool = true;
 
@@ -263,7 +254,7 @@ fn handle_player_commands(message: &GameMessage)
 {
     let response =
 
-    var_access::access_player_meta_sender(&message.channel_info, | meta |
+    access::player_meta_sender(&message.channel_info, |meta |
     {
         process_options(meta.player_id, &message.message);
     });
@@ -278,7 +269,7 @@ fn handle_player_commands(message: &GameMessage)
  * To-do: Update this to potentially send error messages
  * and ensure that players have dialogue.
  */
-fn process_options(player_id: usize, input: &String)
+fn process_options(player_id: usize, input: &str)
 {
     unsafe { if let Some(ref registry) = CURRENT_OPTIONS
     {
@@ -307,7 +298,7 @@ fn process_options(player_id: usize, input: &String)
     else { panic!("Error: Option registry not loaded in time."); }}
 }
 
-pub fn get_accessor_for_sender(channel: ::ChannelInfo) -> Option<EntityAccessor>
+pub fn get_accessor_for_sender(channel: ChannelInfo) -> Option<EntityAccessor>
 {
     unsafe { if let Some(ref registry) = player_data::PLAYER_META
     {
@@ -362,13 +353,13 @@ fn tp_command() -> Command
          {
              send_short_message(player_id, e);
          }
-         else { ::get_send_area_options(player_id); }
+         else { get_send_area_options(player_id); }
      })
 }
 
 fn tp_player_to_town(player_id: usize, town_num: usize) -> Result<(), &'static str>
 {
-    var_access::access_player_meta(player_id, | player |
+    access::player_meta(player_id, |player |
     {
         let (x, z) = towns::STARTING_COORDS;
 
@@ -379,9 +370,9 @@ fn tp_player_to_town(player_id: usize, town_num: usize) -> Result<(), &'static s
 
 fn tp_player_to_area(player_id: usize, location: &str) -> Result<(), &'static str>
 {
-    var_access::access_player_meta(player_id, | player |
+    access::player_meta(player_id, |player |
     {
-        let new_coords = match var_access::access_town(player.coordinates.0, | old_town |
+        let new_coords = match access::town(player.coordinates.0, |old_town |
         {
             old_town.locate_area(location)
         }){
@@ -403,9 +394,9 @@ fn tp_player(player: &PlayerMeta, coords: (usize, usize, usize)) -> Result<(), &
         return Err("Currently unable to handle player dialogue.");
     }
 
-    var_access::access_area(player.coordinates, | old_area |
+    access::area(player.coordinates, |old_area |
     {
-        var_access::access_area(coords, | new_area |
+        access::area(coords, |new_area |
         {
             old_area.transfer_to_area(player.player_id, new_area);
         });
@@ -430,7 +421,7 @@ fn money_command() -> Command
              }
          };
 
-         var_access::access_player_context(player_id, | _, _, _, entity |
+         access::player_context(player_id, |_, _, _, entity |
          {
              if quantity > 0
              {
@@ -450,9 +441,9 @@ fn god_command() -> Command
      {
          if args.len() < 1 { send_short_message(player_id, "Error: You need to specify which one."); return; }
 
-         ::send_short_message(player_id, &format!("Setting your got to {}.", args[0]));
+         send_short_message(player_id, &format!("Setting your got to {}.", args[0]));
 
-         var_access::access_player_meta(player_id, | player |
+         access::player_meta(player_id, |player |
          {
              player.god = args[0].to_string();
          });

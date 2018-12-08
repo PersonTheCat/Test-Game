@@ -1,4 +1,4 @@
-use types::{
+use crate::types::{
     effects::Effect,
     items::{
         self,
@@ -14,9 +14,11 @@ use types::{
     }
 };
 
-use player_options::{ Dialogue, Response, Command };
-use var_access::{ self, EntityAccessor };
-use player_data::PlayerMeta;
+use crate::util::player_options::{ Dialogue, Response, Command };
+use crate::util::access::{ self, EntityAccessor };
+use crate::player_data::PlayerMeta;
+use crate::text;
+use crate::*;
 
 use self::AttemptedPurchase::*;
 use self::AttemptedSale::*;
@@ -56,7 +58,7 @@ pub trait Area: EntityHolder + AreaTools
 
     fn set_guaranteed_item(&self, _item: Box<Item>) {  }
 
-    fn get_info_for_player(&self, player: &mut PlayerMeta) -> Option<String>
+    fn get_dialogue_info(&self, player: &mut PlayerMeta) -> Option<String>
     {
         Some(get_new_map(self.get_coordinates().0, player))
     }
@@ -69,7 +71,7 @@ pub trait Area: EntityHolder + AreaTools
         Dialogue::empty(player.player_id)
     }
 
-    fn get_movements_for_player(&self, _player_id: usize, responses: &mut Vec<Response>)
+    fn get_movements(&self, _player_id: usize, responses: &mut Vec<Response>)
     {
         let current = self.get_coordinates();
         let connections = self.get_connections();
@@ -88,9 +90,9 @@ pub trait Area: EntityHolder + AreaTools
 
             responses.push(Response::_simple(text, move | called_player: usize |
             {
-                var_access::access_area(current, | current_area |
+                access::area(current, | current_area |
                 {
-                    var_access::access_area(coordinates, | new_area |
+                    access::area(coordinates, | new_area |
                     {
                         current_area.transfer_to_area(called_player, new_area);
                     })
@@ -107,61 +109,99 @@ pub trait Area: EntityHolder + AreaTools
         {
             if entity.get_id() == player.player_id { continue; }
 
-            if let Some(text) = entity.get_response_text_for_player(player)
+            if let Some(text) = entity.get_response_text(player)
             {
                 let accessor = entity.get_accessor();
 
                 responses.push(Response::_get_entity_dialogue(text, accessor, player.player_id));
             }
+
+            if entity.get_type() == "player"
+            {
+                let sender = player.name.clone();
+                let receiver = entity.get_id();
+                let wave = Response::_action_only(format!("Wave to {}.", entity.get_name()), move | p |
+                {
+                    let msg = *choose(&[
+                        "<name> says hello!",
+                        "<name> says hi!",
+                        "<name>, a fellow player, has called out\nto you.",
+                        "You have been contacted by <name>.",
+                        "A strange creature known as \"<name>\"\nis shaking its hands at you.",
+                        "You notice a bizarre machination which\ncalls itself \"<name>\" staring in your\ndirection.",
+                        "You can't help but notice you're being\nwatched by <name>.",
+                        "You stop and gaze upon the horror that\nis <name>.",
+                        "Frightened, you turn around to get away\nfrom <name>.",
+                        "You must be special. <name> has been\nwatching you."
+                    ]);
+
+                    let formatted = text::apply_replacements(msg, &[("<name>", sender.clone())]);
+
+                    add_short_message(receiver, &formatted);
+
+                    if !try_refresh_options(receiver)
+                    {
+                        send_short_message(p, *choose(&[
+                            "They were too busy to notice you, but heard your message.",
+                            "They didn't see you there, but got your message."
+                        ]));
+                    }
+                    else { send_current_options(p); } // Manually trigger refresh. There is a very strange bug associated.
+                });
+                let trade = Response::_text_only(format!("Trade with {}", entity.get_name()));
+
+                responses.push(wave);
+                responses.push(trade);
+            }
         }
     }
 
-    fn get_specials_for_player(&self, _player: &mut PlayerMeta, _responses: &mut Vec<Response>) {}
+    fn get_specials(&self, _player: &mut PlayerMeta, _responses: &mut Vec<Response>) {}
 
-    fn get_commands_for_player(&self, player_id: usize, commands: &mut Vec<Command>)
+    fn get_commands(&self, player_id: usize, commands: &mut Vec<Command>)
     {
         commands.push( Command::goto_dialogue("i", "View your inventory", move ||
         {
-            var_access::access_player_context(player_id, | player, _, _, entity |
+            access::player_context(player_id, | player, _, _, entity |
             {
                 entity.get_inventory()
                     .expect("Player does not have an inventory.")
-                    ._get_dialogue_for_player(player)
+                    ._get_dialogue(player)
             })
             .expect("Player data no longer exists.")
         }));
 
-        if var_access::access_player(player_id, | e | e.get_secondary() != "None")
+        if access::player(player_id, | e | e.get_secondary() != "None")
             .expect("Player data no longer exists.")
         {
             commands.push( Command::simple("s", "Use your secondary item.", | _, p |
             {
-                var_access::access_player(p, | e | e.use_secondary())
+                access::player(p, |e | e.use_secondary())
                     .expect("Player data no longer exists.");
             }));
         }
     }
 
-    fn get_dialogue_for_player(&self, player_id: usize) -> Dialogue
+    fn get_dialogue(&self, player_id: usize) -> Dialogue
     {
-        var_access::access_player_meta(player_id, | player |
+        access::player_meta(player_id, |player |
         {
-            self._get_dialogue_for_player(player)
+            self._get_dialogue(player)
         })
         .expect("Player data no longer exists.")
     }
 
-    fn _get_dialogue_for_player(&self, player: &mut PlayerMeta) -> Dialogue
+    fn _get_dialogue(&self, player: &mut PlayerMeta) -> Dialogue
     {
         if self.contains_mobs() { return self.fight_sequence(player); }
 
         let mut responses = Vec::new();
         let mut commands = Vec::new();
 
-        self.get_movements_for_player(player.player_id, &mut responses);
-        self.get_specials_for_player(player, &mut responses);
+        self.get_movements(player.player_id, &mut responses);
+        self.get_specials(player, &mut responses);
         self.get_entity_interactions(player, &mut responses);
-        self.get_commands_for_player(player.player_id, &mut commands);
+        self.get_commands(player.player_id, &mut commands);
 
         let coordinates = self.get_coordinates();
 
@@ -177,7 +217,7 @@ pub trait Area: EntityHolder + AreaTools
         {
             title: self.get_formatted_title(),
             text: entrance_message,
-            info: self.get_info_for_player(player),
+            info: self.get_dialogue_info(player),
             responses,
             commands,
             text_handler: None,
@@ -193,7 +233,7 @@ pub trait Area: EntityHolder + AreaTools
 
 fn get_new_area_title(coords: (usize, usize, usize)) -> String
 {
-    match var_access::access_area(coords, | a | a.get_title())
+    match access::area(coords, |a | a.get_title())
     {
         Some(title) => title,
         None => String::new()
@@ -202,7 +242,7 @@ fn get_new_area_title(coords: (usize, usize, usize)) -> String
 
 fn get_new_map(town_num: usize, player: &mut PlayerMeta) -> String
 {
-    var_access::access_town(town_num, | t | t._get_map_for_player(player))
+    access::town(town_num, | t | t._get_map_for_player(player))
 }
 
 /**
@@ -400,13 +440,13 @@ pub trait Entity
 
     fn get_inventory(&self) -> Option<&Inventory> { None }
 
-    fn get_response_text_for_player(&self, _player: &mut PlayerMeta) -> Option<String> { None }
+    fn get_response_text(&self, _player: &mut PlayerMeta) -> Option<String> { None }
 
-    fn get_dialogue_for_player(&self, player_id: usize) -> Option<Dialogue>
+    fn get_dialogue(&self, player_id: usize) -> Option<Dialogue>
     {
-        var_access::access_player_meta(player_id, | player |
+        access::player_meta(player_id, | player |
         {
-            self._get_dialogue_for_player(player)
+            self._get_dialogue(player)
         })
         .expect("Player data no longer exists.")
     }
@@ -418,20 +458,20 @@ pub trait Entity
      * because player metadata is also generally needed and there
      * can only be one mutable reference to _player at a time.
      */
-    fn _get_dialogue_for_player(&self, _player: &mut PlayerMeta) -> Option<Dialogue> { None }
+    fn _get_dialogue(&self, _player: &mut PlayerMeta) -> Option<Dialogue> { None }
 
-    fn goto_dialogue_for_player(&self, marker: u8, player_id: usize) -> Option<Dialogue>
+    fn goto_dialogue(&self, marker: u8, player_id: usize) -> Option<Dialogue>
     {
-        var_access::access_player_meta(player_id, | player |
+        access::player_meta(player_id, | player |
         {
-            self._goto_dialogue_for_player(marker, player)
+            self._goto_dialogue(marker, player)
         })
         .expect("Player data no longer exists.")
     }
 
-    fn _goto_dialogue_for_player(&self, _marker: u8, _player: &mut PlayerMeta) -> Option<Dialogue> { None }
+    fn _goto_dialogue(&self, _marker: u8, _player: &mut PlayerMeta) -> Option<Dialogue> { None }
 
-    fn get_trades_for_player(&self, _player_id: usize, _trades: &mut Vec<Response>) {}
+    fn get_trades(&self, _player_id: usize, _trades: &mut Vec<Response>) {}
 
     fn give_item(&self, _item: Box<Item>) {}
 
@@ -635,9 +675,9 @@ pub trait Shop
         let (price, can_afford, can_hold) =
         inventory.get_item_info(slot_num, 0, | item |
         {
-            var_access::access_player_meta(player_id, move | meta |
+            access::player_meta(player_id, move | meta |
             {
-                var_access::access_entity(meta.get_accessor(), | player |
+                access::entity(meta.get_accessor(), | player |
                 {
                     let price = item.get_adjusted_price(price_factor);
                     (price, player.can_afford(price), player.get_inventory().unwrap().can_add_item(item))
@@ -652,7 +692,7 @@ pub trait Shop
         else
         {
             // Placement avoids borrow errors with item use.
-            var_access::access_player(player_id, | entity |
+            access::player(player_id, | entity |
             {
                 entity.give_item(inventory.take_item(slot_num, None));
                 entity.take_money(price);
@@ -671,7 +711,7 @@ pub trait Shop
 
     fn restock(&self);
 
-    fn get_dialogue_for_player(&self, player: &mut PlayerMeta, allow_sales: bool, price_factor: f32) -> Dialogue
+    fn get_dialogue(&self, player: &mut PlayerMeta, allow_sales: bool, price_factor: f32) -> Dialogue
     {
         let inventory: &Inventory = self.borrow_inventory();
 
@@ -679,8 +719,8 @@ pub trait Shop
         let mut responses = Vec::new();
         let mut commands = Vec::new();
 
-        self.get_responses_for_player(player, &info, allow_sales, &mut responses);
-        self.get_commands_for_player(player, &info, allow_sales, price_factor, &mut commands);
+        self.get_responses(player, &info, allow_sales, &mut responses);
+        self.get_commands(player, &info, allow_sales, price_factor, &mut commands);
 
         Dialogue::new
         (
@@ -695,12 +735,12 @@ pub trait Shop
         )
     }
 
-    fn get_responses_for_player(&self, _player: &mut PlayerMeta, _items: &Vec<ItemDisplayInfo>, _allow_sales: bool, responses: &mut Vec<Response>)
+    fn get_responses(&self, _player: &mut PlayerMeta, _items: &Vec<ItemDisplayInfo>, _allow_sales: bool, responses: &mut Vec<Response>)
     {
         responses.push(Response::text_only("Leave."));
     }
 
-    fn get_commands_for_player(&self, player: &mut PlayerMeta, items: &Vec<ItemDisplayInfo>, allow_sales: bool, price_factor: f32, commands: &mut Vec<Command>)
+    fn get_commands(&self, player: &mut PlayerMeta, items: &Vec<ItemDisplayInfo>, allow_sales: bool, price_factor: f32, commands: &mut Vec<Command>)
     {
         let mut item_ids = Vec::new();
         items.iter().for_each(| i |{ item_ids.push(i.item_id) });
@@ -711,7 +751,7 @@ pub trait Shop
             input_desc: String::from("buy #"),
             output_desc: String::from("Buy item #."),
             run: self.process_buy(item_ids, price_factor),
-            next_dialogue: ::Generate(self.refresh_dialogue(player.player_id, allow_sales, price_factor))
+            next_dialogue: Generate(self.refresh_dialogue(player.player_id, allow_sales, price_factor))
         });
 
         if allow_sales
@@ -720,7 +760,7 @@ pub trait Shop
             "sell", "sell #", "Sell item # from inventory.",
             | _args, player_id |
             {
-                ::send_short_message(player_id, "Let's just pretend you sold that. ;)");
+                send_short_message(player_id, "Let's just pretend you sold that. ;)");
             }));
         }
     }
@@ -737,7 +777,7 @@ pub trait Shop
             if args.len() == 0 { return; }
             if item_ids.len() == 0
             {
-                ::send_short_message(player_id, "There are no items to buy.");
+                send_short_message(player_id, "There are no items to buy.");
                 return;
             }
             let shop = unsafe { match ptr.as_ref()
@@ -745,7 +785,7 @@ pub trait Shop
                 Some(s) => s,
                 None =>
                 {
-                    ::add_short_message(player_id, "The shop seems to have moved away.");
+                    add_short_message(player_id, "The shop seems to have moved away.");
                     return;
                 }
             }};
@@ -754,13 +794,13 @@ pub trait Shop
                 Ok(num) => num,
                 Err(_) =>
                 {
-                    ::add_short_message(player_id, "Not sure which item you're looking for.");
+                    add_short_message(player_id, "Not sure which item you're looking for.");
                     return;
                 }
             };
             if item_ids.len() < item_num || item_num < 1
             {
-                ::add_short_message(player_id, "I'm afraid I can't tell what you're looking for.");
+                add_short_message(player_id, "I'm afraid I can't tell what you're looking for.");
                 return;
             }
 
@@ -768,10 +808,10 @@ pub trait Shop
 
             match shop.buy(player_id, item_id, price_factor)
             {
-                NotFound => { ::add_short_message(player_id, "Looks like someone already bought that item."); }
-                CantAfford => { ::add_short_message(player_id, "You can't afford that."); },
-                CantHold => { ::add_short_message(player_id, "You don't have enough room."); },
-                Purchase => { ::add_short_message(player_id, "Purchase successful."); }
+                NotFound => { add_short_message(player_id, "Looks like someone already bought that item."); }
+                CantAfford => { add_short_message(player_id, "You can't afford that."); },
+                CantHold => { add_short_message(player_id, "You don't have enough room."); },
+                Purchase => { add_short_message(player_id, "Purchase successful."); }
             };
         })
     }
@@ -782,12 +822,12 @@ pub trait Shop
 
         Box::new(move ||
         {
-            var_access::access_player_context(player_id, move | player, _, area, _ |
+            access::player_context(player_id, move | player, _, area, _ |
             {
                 unsafe { match ptr.as_ref()
                 {
-                    Some(ref shop) => shop.get_dialogue_for_player(player, allow_sales, price_factor),
-                    None => area._get_dialogue_for_player(player)
+                    Some(ref shop) => shop.get_dialogue(player, allow_sales, price_factor),
+                    None => area._get_dialogue(player)
                 }}
             })
             .expect("Player somehow moved.")

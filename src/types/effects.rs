@@ -1,6 +1,7 @@
-use timed_events::{ DelayedEvent, RepeatedEvent };
-use var_access::{ self, EntityAccessor };
-use traits::Entity;
+use crate::util::timed_events::{ DelayedEvent, RepeatedEvent };
+use crate::util::access::{ self, EntityAccessor };
+use crate::traits::Entity;
+use crate::*;
 
 use self::EffectType::*;
 
@@ -18,7 +19,7 @@ pub enum EffectType
 #[derive(Clone)]
 pub struct Effect
 {
-    pub name: String,
+    pub name: &'static str,
     pub level: u32,
     pub effect_type: EffectType,
     pub health: i32,
@@ -38,7 +39,7 @@ impl Default for Effect
     {
         Effect
         {
-            name: String::from("Unnamed Potion"),
+            name: "Unnamed Potion",
             level: 0,
             effect_type: Permanent,
             health: 0,
@@ -87,7 +88,7 @@ impl Effect
 
         Effect
         {
-            name: String::from("Healing"),
+            name: "Healing",
             health: 5 + (level as i32 * 5),
             level,
             ..Self::default()
@@ -98,7 +99,7 @@ impl Effect
     {
         Effect
         {
-            name: String::from("Healing"),
+            name: "Healing",
             health: amount,
             ..Self::default()
         }
@@ -119,7 +120,7 @@ impl Effect
 
         Effect
         {
-            name: String::from("Harming"),
+            name: "Harming",
             health: -5 * level as i32,
             level,
             ..Self::default()
@@ -130,7 +131,7 @@ impl Effect
     {
         Effect
         {
-            name: String::from("Harming"),
+            name: "Harming",
             health: -1 * amount,
             ..Self::default()
         }
@@ -165,7 +166,7 @@ impl Effect
 
         Effect
         {
-            name: String::from("Absorption"),
+            name: "Absorption",
             max_health: value,
             health: value,
             level,
@@ -203,7 +204,7 @@ impl Effect
 
         Effect
         {
-            name: String::from("Absorption"),
+            name: "Absorption",
             max_health: value,
             health: value,
             level,
@@ -240,7 +241,7 @@ impl Effect
 
         Effect
         {
-            name: String::from("Strength"),
+            name: "Strength",
             base_damage: value,
             level,
             effect_type: Temporary(duration),
@@ -276,7 +277,7 @@ impl Effect
 
         Effect
         {
-            name: String::from("Strength"),
+            name: "Strength",
             base_damage: value,
             level,
             effect_type: Temporary(duration),
@@ -312,7 +313,7 @@ impl Effect
 
         Effect
         {
-            name: String::from("Attack Swiftness"),
+            name: "Attack Swiftness",
             attack_speed: value,
             level,
             effect_type: Temporary(duration),
@@ -348,7 +349,7 @@ impl Effect
 
         Effect
         {
-            name: String::from("Attack Slowness"),
+            name: "Attack Slowness",
             attack_speed: value,
             level,
             effect_type: Temporary(duration as u64),
@@ -384,7 +385,7 @@ impl Effect
 
         Effect
         {
-            name: String::from("Item Swiftness"),
+            name: "Item Swiftness",
             item_speed: value,
             level,
             effect_type: Temporary(duration),
@@ -420,7 +421,7 @@ impl Effect
 
         Effect
         {
-            name: String::from("Item Slowness"),
+            name: "Item Slowness",
             item_speed: value,
             level,
             effect_type: Temporary(duration as u64),
@@ -457,7 +458,7 @@ impl Effect
 
         Effect
         {
-            name: String::from("Gambling"),
+            name: "Gambling",
             money: value,
             level,
             effect_type: Temporary(duration as u64),
@@ -584,11 +585,11 @@ impl Effect
 
     pub fn get_fountain_effect(town_num: usize) -> Effect
     {
-        let result = thread_rng().choose(
+        let result = *choose(
             &[ABSORPTION, STRENGTH, ATK_SWIFTNESS, ITEM_SWIFTNESS, GAMBLING]
-        ).unwrap();
+        );
 
-        match *result
+        match result
         {
             ABSORPTION => Self::get_leveled_absorption(town_num),
             STRENGTH => Self::get_leveled_strength(town_num),
@@ -608,7 +609,7 @@ impl Effect
     {
         Effect
         {
-            name: String::from("Health Up"),
+            name: "Health Up",
             max_health: amount,
             ..Self::default()
         }
@@ -623,7 +624,7 @@ impl Effect
     {
         Effect
         {
-            name: String::from("Health Down"),
+            name: "Health Down",
             max_health: -1 * amount,
             ..Self::default()
         }
@@ -638,7 +639,7 @@ impl Effect
     {
         Effect
         {
-            name: String::from("Damage Up"),
+            name: "Damage Up",
             base_damage: thread_rng().gen_range(min, max),
             ..Self::default()
         }
@@ -653,7 +654,7 @@ impl Effect
     {
         Effect
         {
-            name: String::from("Damage Down"),
+            name: "Damage Down",
             base_damage: thread_rng().gen_range(max * -1, min * -1),
             ..Self::default()
         }
@@ -668,7 +669,7 @@ impl Effect
     {
         Effect
         {
-            name: String::from("Atk Speed Up"),
+            name: "Atk Speed Up",
             attack_speed: thread_rng().gen_range(max * -1, min * -1),
             ..Self::default()
         }
@@ -683,7 +684,7 @@ impl Effect
     {
         Effect
         {
-            name: String::from("Atk Speed Down"),
+            name: "Atk Speed Down",
             attack_speed: thread_rng().gen_range(min, max),
             ..Self::default()
         }
@@ -698,7 +699,7 @@ impl Effect
     {
         Effect
         {
-            name: String::from("Item Speed Up"),
+            name: "Item Speed Up",
             item_speed: thread_rng().gen_range(max * -1, min * -1),
             ..Self::default()
         }
@@ -713,7 +714,7 @@ impl Effect
     {
         Effect
         {
-            name: String::from("Item Speed Down"),
+            name: "Item Speed Down",
             item_speed: thread_rng().gen_range(min, max),
             ..Self::default()
         }
@@ -728,7 +729,7 @@ impl Effect
     {
         Effect
         {
-            name: String::from("Money Up"),
+            name: "Money Up",
             money: thread_rng().gen_range(min, max),
             ..Self::default()
         }
@@ -743,7 +744,7 @@ impl Effect
     {
         Effect
         {
-            name: String::from("Money Down"),
+            name: "Money Down",
             money: thread_rng().gen_range(max * -1, min * -1),
             ..Self::default()
         }
@@ -752,7 +753,7 @@ impl Effect
     pub fn apply(&self, to_entity: &Entity)
     {
         let generated = self.generate(to_entity);
-        let potion_ref = self.name.clone(); // Lifetimes
+        let potion_ref: &'static str = self.name;
         let accessor= to_entity.get_accessor();
 
         /**
@@ -769,37 +770,37 @@ impl Effect
 
                 if to_entity.get_type() == "player"
                 {
-                    ::send_short_message(to_entity.get_id(), &format!("You got a permanent {} effect.", self.name));
+                    send_short_message(to_entity.get_id(), &format!("You got a permanent {} effect.", self.name));
                 }
 
-                to_entity.remove_effect(potion_ref.as_str());
+                to_entity.remove_effect(potion_ref);
             },
             Temporary(duration) =>
             {
                 generated();
 
                 DelayedEvent::new(duration, None, Some(to_entity.get_id()),
-                Some(self.name.clone()), move ||
+                Some(self.name.to_string()), move ||
                 {
-                    var_access::access_entity(accessor, | entity |
+                    access::entity(accessor, |entity |
                     {
-                        entity.remove_effect(potion_ref.as_str());
+                        entity.remove_effect(potion_ref);
                     });
                 });
             },
             Repeat(interval, duration) =>
             {
                 RepeatedEvent::new(interval, duration, None, Some(to_entity.get_id()),
-                    Some(self.name.clone()), move ||
+                    Some(self.name.to_string()), move ||
                 {
                     generated()
                 });
 
                 DelayedEvent::no_flags(duration, move ||
                 {
-                    var_access::access_entity(accessor, | entity |
+                    access::entity(accessor, |entity |
                     {
-                        entity.remove_effect(potion_ref.as_str());
+                        entity.remove_effect(potion_ref);
                     });
                 });
             }
@@ -840,7 +841,7 @@ impl Effect
 
             if from_entity.get_type() == "player"
             {
-                ::send_short_message(from_entity.get_id(), &format!("{} effect wore off.", self.name));
+                send_short_message(from_entity.get_id(), &format!("{} effect wore off.", self.name));
             }
         }
     }
@@ -865,7 +866,7 @@ impl Effect
         {
             Temporary(_dur) if entity.get_type() == "player" =>
             {
-                updatable_effect(self.name.clone(), entity.get_accessor())
+                updatable_effect(self.name, entity.get_accessor())
             }
             _ => standard_effect(self.clone(), entity.get_accessor())
         }
@@ -1030,9 +1031,9 @@ fn standard_effect(effect: Effect, accessor: EntityAccessor) -> Box<'static + Fn
 {
     Box::new(move ||
     {
-        match var_access::access_entity(accessor, | entity |
+        match access::entity(accessor, |entity |
         {
-            if entity.has_effect(effect.name.as_str())
+            if entity.has_effect(effect.name)
             {
                 if effect.max_health != 0
                 {
@@ -1073,15 +1074,15 @@ fn standard_effect(effect: Effect, accessor: EntityAccessor) -> Box<'static + Fn
  * This will update the original effect to ensure
  * that it can be removed correctly.
  */
-fn updatable_effect(potion_ref: String, accessor: EntityAccessor) -> Box<'static + Fn() -> bool>
+fn updatable_effect(potion_ref: &'static str, accessor: EntityAccessor) -> Box<'static + Fn() -> bool>
 {
     Box::new(move ||
     {
-        match var_access::access_entity(accessor, | entity |
+        match access::entity(accessor, |entity |
         {
             if let Some(ref player) = entity.as_player()
             {
-                player.update_effect(potion_ref.as_str(), | effect |
+                player.update_effect(potion_ref, | effect |
                 {
                     if effect.max_health != 0
                     {

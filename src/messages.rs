@@ -1,14 +1,16 @@
-use util::timed_events::{ DelayedEvent, DelayHandler };
-use messages::MessageComponent::*;
-use player_options::Dialogue;
-use var_access;
+use crate::util::timed_events::{ DelayedEvent, DelayHandler };
+use crate::messages::MessageComponent::*;
+use crate::util::player_options::Dialogue;
+use crate::util::access;
+use crate::text;
+use crate::*;
 
 #[cfg(feature = "discord")]
-use util::discord_bot;
+use crate::util::discord_bot;
 #[cfg(feature = "discord")]
 use serenity::model::id::{ ChannelId, UserId };
 #[cfg(feature = "remote_clients")]
-use util::server_host;
+use crate::util::server_host;
 
 use regex::Regex;
 
@@ -18,7 +20,7 @@ use self::ChannelInfo::*;
 
 pub fn send_message_to_player(id: usize, typ: MessageComponent, message: &str, ms_speed: u64) -> DelayHandler
 {
-    var_access::access_player_meta(id, move | meta |
+    access::player_meta(id, move |meta |
     {
         match typ
         {
@@ -34,7 +36,7 @@ pub fn send_message_to_player(id: usize, typ: MessageComponent, message: &str, m
 
 pub fn update_player_message(id: usize, typ: MessageComponent, message: &str)
 {
-    var_access::access_player_meta(id, move | meta |
+    access::player_meta(id, move |meta |
     {
         match typ
         {
@@ -47,29 +49,29 @@ pub fn update_player_message(id: usize, typ: MessageComponent, message: &str)
 
 pub fn send_blocking_message(id: usize, message: &str, ms_speed: u64) -> DelayHandler
 {
-    let dialogues = ::remove_all_options(id);
+    let dialogues = remove_all_options(id);
     let empty = Dialogue::empty(id);
     let empty_id = empty.id;
-    ::register_options(empty);
+    register_options(empty);
 
     let handler = send_message_to_player(id, General, message, ms_speed);
     let ret = handler.clone();
 
     handler.then(move ||
     {
-        ::delete_options(empty_id);
+        delete_options(empty_id);
         for dialogue in dialogues
         {
-            ::register_options(dialogue);
+            register_options(dialogue);
         }
-        ::update_options_manually(id);
+        update_options_manually(id);
     });
     ret
 }
 
 pub fn add_short_message(id: usize, message: &str)
 {
-    var_access::access_player_meta(id, move | meta |
+    access::player_meta(id, move |meta |
     {
         meta.reusable_message.add_to_general(format!("* {}\n", message));
     });
@@ -77,7 +79,7 @@ pub fn add_short_message(id: usize, message: &str)
 
 pub fn send_short_message(id: usize, message: &str) -> DelayHandler
 {
-    var_access::access_player_meta(id, move | meta |
+    access::player_meta(id, move |meta |
     {
         meta.reusable_message.add_to_general(format!("* {}\n", message));
 
@@ -234,7 +236,7 @@ fn separate_messages(channel: &ChannelInfo)
         Local =>
         {
             let mut print = String::new();
-            for _ in 0..::NUM_SPACES { print += "\n"; }
+            for _ in 0..NUM_SPACES { print += "\n"; }
             println!("{}", print);
         },
         /**
@@ -245,7 +247,7 @@ fn separate_messages(channel: &ChannelInfo)
         Remote(ref username) =>
         {
             let mut print = String::new();
-            for _ in 0..::NUM_SPACES { print += "\n"; }
+            for _ in 0..NUM_SPACES { print += "\n"; }
             server_host::send_message_to_client(username, &print);
         },
         /**
@@ -298,7 +300,14 @@ impl ReusableMessage
     pub fn set_general(&mut self, message: &str)
     {
         self.general.clear();
-        self.general.push(indent_general(message));
+        let formatted;
+        if message.starts_with("§")
+        {
+            let with_lines = text::auto_break(&message[2..]);
+            formatted = indent_general(&with_lines);
+        }
+        else { formatted = indent_general(message); }
+        self.general.push(formatted);
     }
 
     pub fn get_general(&self) -> String
@@ -312,8 +321,13 @@ impl ReusableMessage
         ret
     }
 
-    pub fn add_to_general(&mut self, message: String)
+    pub fn add_to_general(&mut self, mut message: String)
     {
+        if message.starts_with("§")
+        {
+            message = text::auto_break(&message[2..]);
+        }
+
         if self.general.len() > 0
         {
             if self.general[0].starts_with(">")
@@ -321,7 +335,7 @@ impl ReusableMessage
                 self.general.clear();
             }
         }
-        if self.general.len() >= ::MAX_SHORT_MESSAGES
+        if self.general.len() >= MAX_SHORT_MESSAGES
         {
             self.general.remove(0);
         }

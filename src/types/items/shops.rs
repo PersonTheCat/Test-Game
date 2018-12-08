@@ -1,6 +1,6 @@
-use traits::{ Shop, Item };
-use types::items::inventories::Inventory;
-use item_settings;
+use crate::traits::{ Shop, Item };
+use crate::types::items::inventories::Inventory;
+use crate::item_settings;
 
 /**
  * Persistent refers to the fact that

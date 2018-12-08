@@ -1,6 +1,7 @@
-use player_data::{ PlayerMeta, PLAYER_META };
-use traits::{ Entity, Area };
-use towns::{ self, Town };
+use crate::player_data::{ PlayerMeta, PLAYER_META };
+use crate::traits::{ Entity, Area };
+use crate::types::towns::{ self, Town };
+use crate::*;
 
 /**
  *   These are a bunch of methods I use for accessing
@@ -32,19 +33,19 @@ impl EntityAccessor
     {
         if self.is_player
         {
-            access_player_meta(self.entity_id, | p | p.get_accessor())
+            player_meta(self.entity_id, |p | p.get_accessor())
                 .expect("Player data no longer exists.")
         }
         else { self }
     }
 }
 
-pub fn access_entity<T, F>(accessor: EntityAccessor, callback: F) -> Option<T>
+pub fn entity<T, F>(accessor: EntityAccessor, callback: F) -> Option<T>
     where F: FnOnce(&Entity) -> T
 {
     let accessor = accessor.update();
 
-    access_area(accessor.coordinates, | area |
+    area(accessor.coordinates, |area |
     {
         let entities = area.borrow_entities_ref();
 
@@ -61,7 +62,7 @@ pub fn access_entity<T, F>(accessor: EntityAccessor, callback: F) -> Option<T>
     .expect("Area no longer exists.")
 }
 
-pub fn access_player_meta_sender<T, F>(channel: &::ChannelInfo, callback: F) -> Option<T>
+pub fn player_meta_sender<T, F>(channel: &ChannelInfo, callback: F) -> Option<T>
     where F: FnOnce(&PlayerMeta) -> T
 {
     unsafe { if let Some(ref registry) = PLAYER_META
@@ -79,7 +80,7 @@ pub fn access_player_meta_sender<T, F>(channel: &::ChannelInfo, callback: F) -> 
     panic!("Error: Player meta registry not established in time.");
 }
 
-pub fn access_player_meta<T, F>(player_id: usize, callback: F) -> Option<T>
+pub fn player_meta<T, F>(player_id: usize, callback: F) -> Option<T>
     where F: FnOnce(&mut PlayerMeta) -> T
 {
     unsafe { if let Some(ref mut registry) = PLAYER_META
@@ -97,7 +98,7 @@ pub fn access_player_meta<T, F>(player_id: usize, callback: F) -> Option<T>
     None
 }
 
-pub fn access_player_context<T, F>(player_id: usize, callback: F) -> Option<T>
+pub fn player_context<T, F>(player_id: usize, callback: F) -> Option<T>
     where F: FnOnce(&mut PlayerMeta, &Town, &Area, &Entity) -> T
 {
     unsafe { if let Some(ref mut registry) = PLAYER_META
@@ -112,7 +113,7 @@ pub fn access_player_context<T, F>(player_id: usize, callback: F) -> Option<T>
             None => return None
         };
 
-        return access_town(player.coordinates.0, | town |
+        return town(player.coordinates.0, |town |
         {
             let area = match &town.get_areas()[player.coordinates.1][player.coordinates.2]
             {
@@ -138,18 +139,18 @@ pub fn access_player_context<T, F>(player_id: usize, callback: F) -> Option<T>
  * with the player's context be borrowed, but is
  * more readable under some circumstances.
  */
-pub fn access_player<T, F>(player_id: usize, callback: F) -> Option<T>
+pub fn player<T, F>(player_id: usize, callback: F) -> Option<T>
     where F: FnOnce(&Entity) -> T
 {
-    access_player_context(player_id, | _, _, _, e | callback(e))
+    player_context(player_id, |_, _, _, e | callback(e))
 }
 
-pub fn get_player_for_sender(channel: &::ChannelInfo) -> Option<usize>
+pub fn get_player_for_sender(channel: &ChannelInfo) -> Option<usize>
 {
-    access_player_meta_sender(channel, | p | p.player_id)
+    player_meta_sender(channel, |p | p.player_id)
 }
 
-pub fn access_town<F, T>(num: usize, callback: F) -> T
+pub fn town<F, T>(num: usize, callback: F) -> T
     where F: FnOnce(&Town) -> T
 {
     unsafe { if let Some(ref mut registry) = towns::TOWN_REGISTRY
@@ -160,7 +161,7 @@ pub fn access_town<F, T>(num: usize, callback: F) -> T
             None =>
             {
                 towns::Town::new(num); // Registered automatically.
-                return access_town(num, callback); // Potential overflow errors; seems fairly safe.
+                return town(num, callback); // Potential overflow errors; seems fairly safe.
             }
         }
     }
@@ -169,16 +170,16 @@ pub fn access_town<F, T>(num: usize, callback: F) -> T
 
 pub fn area_exists(coords: (usize, usize, usize)) -> bool
 {
-    access_town(coords.0, | town |
+    town(coords.0, |town |
     {
         town.get_areas()[coords.1][coords.2].is_some()
     })
 }
 
-pub fn access_area<F, T>(coords: (usize, usize, usize), callback: F) -> Option<T>
+pub fn area<F, T>(coords: (usize, usize, usize), callback: F) -> Option<T>
     where F: FnOnce(&Area) -> T
 {
-    access_town(coords.0, | town |
+    town(coords.0, |town |
     {
         match &town.get_areas()[coords.1][coords.2]
         {
@@ -188,10 +189,10 @@ pub fn access_area<F, T>(coords: (usize, usize, usize), callback: F) -> Option<T
     })
 }
 
-pub fn access_starting_area<F, T>(town_num: usize, callback: F) -> T
+pub fn starting_area<F, T>(town_num: usize, callback: F) -> T
     where F: FnOnce(&Area) -> T
 {
-    access_town(town_num, | town |
+    town(town_num, |town |
     {
         let area = &town.get_areas()[towns::STARTING_COORDS.0][towns::STARTING_COORDS.1];
 

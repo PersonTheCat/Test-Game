@@ -1,10 +1,11 @@
-use messages::MessageComponent::*;
-use traits::{ Entity, Item };
-use types::{
+use crate::messages::MessageComponent::*;
+use crate::traits::{ Entity, Item };
+use crate::types::{
     effects::Effect,
     items::inventories::Inventory
 };
-use var_access;
+use crate::util::access;
+use crate::*;
 
 use std::cell::{ Cell, RefCell };
 
@@ -128,7 +129,7 @@ impl Entity for Player
 
     fn update_health_bar(&self)
     {
-        ::update_player_message(self.id, HealthBar, &self.get_health_bar());
+        update_player_message(self.id, HealthBar, &self.get_health_bar());
     }
 
     fn set_base_damage(&self, val: u32)
@@ -228,11 +229,11 @@ impl Entity for Player
     {
         if self.main_inventory.current_size() < item_num
         {
-            ::send_short_message(self.id, "Invalid item #.");
+            send_short_message(self.id, "Invalid item #.");
             return;
         }
 
-        var_access::access_area(self.get_coordinates(), | area |
+        access::area(self.get_coordinates(), |area |
         {
             self.main_inventory.on_use_item(item_num - 1, Some(self), use_on, area);
         })
@@ -243,11 +244,11 @@ impl Entity for Player
     {
         if self.weapon_slot.current_size() < 1
         {
-            ::send_short_message(self.id, "This item no longer exists.");
+            send_short_message(self.id, "This item no longer exists.");
             return;
         }
 
-        var_access::access_area(self.get_coordinates(), | area |
+        access::area(self.get_coordinates(), |area |
         {
             self.weapon_slot.on_use_item(0, Some(self), None, area);
         })
@@ -258,11 +259,11 @@ impl Entity for Player
     {
         if self.offhand_slot.current_size() < 1
         {
-            ::send_short_message(self.id, "This item no longer exists.");
+            send_short_message(self.id, "This item no longer exists.");
             return;
         }
 
-        var_access::access_area(self.get_coordinates(), | area |
+        access::area(self.get_coordinates(), |area |
         {
             self.offhand_slot.on_use_item(0, Some(self), None, area);
         })
@@ -378,13 +379,13 @@ impl Entity for Player
 
     fn kill_entity(&self)
     {
-        var_access::access_player_meta(self.id, | meta |
+        access::player_meta(self.id, |meta |
         {
-            var_access::access_area(meta.coordinates, | current_area |
+            access::area(meta.coordinates, |current_area |
             {
                 let current_town = meta.coordinates.0;
 
-                var_access::access_starting_area(current_town, | starting_area |
+                access::starting_area(current_town, |starting_area |
                 {
                     current_area.transfer_to_area(self.id, starting_area);
                 });
@@ -399,7 +400,7 @@ impl Entity for Player
 
     fn set_coordinates(&self, coords: (usize, usize, usize))
     {
-        var_access::access_player_meta(self.id, | meta |
+        access::player_meta(self.id, |meta |
         {
             meta.coordinates = coords;
         });
@@ -407,7 +408,7 @@ impl Entity for Player
 
     fn get_coordinates(&self) -> (usize, usize, usize)
     {
-        var_access::access_player_meta(self.id, | meta |
+        access::player_meta(self.id, |meta |
         {
             meta.coordinates
         })
@@ -416,7 +417,7 @@ impl Entity for Player
 
     fn on_enter_area(&self, coords: (usize, usize, usize))
     {
-        var_access::access_player_meta(self.id, | meta |
+        access::player_meta(self.id, |meta |
         {
             meta.coordinates = coords;
         });

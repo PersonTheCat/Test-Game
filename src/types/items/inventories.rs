@@ -1,8 +1,9 @@
-use types::items::display_info::ItemDisplayInfo;
-use player_options::{ Dialogue, Response, Command };
-use player_data::PlayerMeta;
-use traits::{ Item, Entity, Area };
-use var_access;
+use crate::types::items::display_info::ItemDisplayInfo;
+use crate::util::player_options::{ Dialogue, Response, Command };
+use crate::player_data::PlayerMeta;
+use crate::traits::{ Item, Entity, Area };
+use crate::util::access;
+use crate::*;
 
 use std::cell::RefCell;
 use std::boxed::Box;
@@ -284,7 +285,7 @@ impl Inventory
             {
                 if let Some(ref msg) = response
                 {
-                    ::send_short_message(usr.get_id(), msg);
+                    send_short_message(usr.get_id(), msg);
                 }
             }
         }
@@ -350,23 +351,23 @@ impl Inventory
         ret
     }
 
-    pub fn get_dialogue_for_player(&self, player_id: usize) -> Dialogue
+    pub fn get_dialogue(&self, player_id: usize) -> Dialogue
     {
-        var_access::access_player_meta(player_id, | player |
+        access::player_meta(player_id, |player |
         {
-            self._get_dialogue_for_player(player)
+            self._get_dialogue(player)
         })
         .expect("Player data no longer exists.")
     }
 
-    pub fn _get_dialogue_for_player(&self, player: &mut PlayerMeta) -> Dialogue
+    pub fn _get_dialogue(&self, player: &mut PlayerMeta) -> Dialogue
     {
         let info = self.get_display_info(1.0);
         let mut responses = Vec::new();
         let mut commands = Vec::new();
 
-        self.get_responses_for_player(player, &info, &mut responses);
-        self.get_commands_for_player(player, &info, &mut commands);
+        self.get_responses(player, &info, &mut responses);
+        self.get_commands(player, &info, &mut commands);
 
         Dialogue::new
         (
@@ -381,12 +382,12 @@ impl Inventory
         )
     }
 
-    pub fn get_responses_for_player(&self, _player: &mut PlayerMeta, _items: &Vec<ItemDisplayInfo>, responses: &mut Vec<Response>)
+    pub fn get_responses(&self, _player: &mut PlayerMeta, _items: &Vec<ItemDisplayInfo>, responses: &mut Vec<Response>)
     {
         responses.push(Response::text_only("Close inventory."))
     }
 
-    pub fn get_commands_for_player(&self, player: &mut PlayerMeta, _items: &Vec<ItemDisplayInfo>, commands: &mut Vec<Command>)
+    pub fn get_commands(&self, player: &mut PlayerMeta, _items: &Vec<ItemDisplayInfo>, commands: &mut Vec<Command>)
     {
         let player_id = player.player_id;
 
@@ -401,7 +402,7 @@ impl Inventory
                 {
                     if args.len() < 1
                     {
-                        ::add_short_message(player, "You must specify the item #.");
+                        add_short_message(player, "You must specify the item #.");
                         return;
                     }
                     let slot_num: usize = match args[0].parse()
@@ -409,32 +410,32 @@ impl Inventory
                         Ok(num) => num,
                         Err(_e) =>
                         {
-                            ::add_short_message(player, "Not sure what you're trying to do, there.");
+                            add_short_message(player, "Not sure what you're trying to do, there.");
                             return;
                         }
                     };
 
-                    var_access::access_player(player, move | entity |
+                    access::player(player, move | entity |
                     {
                         let inventory = entity.get_inventory()
                             .expect("Player does not have an inventory.");
 
                         if inventory.current_size() <= slot_num || slot_num == 0
                         {
-                            ::add_short_message(player, "Invalid item #.");
+                            add_short_message(player, "Invalid item #.");
                             return;
                         }
                         entity.equip_item(slot_num);
                     })
                     .expect("Player data no longer exists.");
                 }),
-                next_dialogue: ::Generate(Box::new(move ||
+                next_dialogue: Generate(Box::new(move ||
                 {
-                    var_access::access_player_context(player_id, | p, _, _, e |
+                    access::player_context(player_id, | p, _, _, e |
                     {
                         e.get_inventory()
                             .expect("PLayer not longer has an inventory")
-                            ._get_dialogue_for_player(p)
+                            ._get_dialogue(p)
                     })
                     .expect("Player data no longer exists.")
                 }))
@@ -452,7 +453,7 @@ impl Inventory
                 {
                     if args.len() < 1
                     {
-                        ::add_short_message(player, "You must specify the item #.");
+                        add_short_message(player, "You must specify the item #.");
                         return;
                     }
                     let item_num = match args[0].parse::<usize>()
@@ -460,32 +461,32 @@ impl Inventory
                         Ok(num) if num > 0 => num - 1,
                         _ =>
                         {
-                            ::add_short_message(player, "Not sure what you're trying to do, there.");
+                            add_short_message(player, "Not sure what you're trying to do, there.");
                             return;
                         }
                     };
 
-                    var_access::access_player_context(player, | _, _, a, e |
+                    access::player_context(player, | _, _, a, e |
                     {
                         let inventory = e.get_inventory()
                             .expect("Player no longer has an inventory.");
 
                         if inventory.current_size() <= item_num
                         {
-                            ::add_short_message(player, "Invalid item #.");
+                            add_short_message(player, "Invalid item #.");
                             return;
                         }
                         inventory.on_use_item(item_num, Some(e), None, a);
                     })
                     .expect("Player data no longer exists.");
                 }),
-                next_dialogue: ::Generate(Box::new(move ||
+                next_dialogue: Generate(Box::new(move ||
                 {
-                    var_access::access_player_context(player_id, | p, _, _, e |
+                    access::player_context(player_id, | p, _, _, e |
                     {
                         e.get_inventory()
                             .expect("Player not longer has an inventory.")
-                            ._get_dialogue_for_player(p)
+                            ._get_dialogue(p)
                     })
                     .expect("Player data no longer exists.")
                 }))

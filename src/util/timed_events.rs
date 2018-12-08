@@ -1,8 +1,8 @@
-extern crate rand;
+use crate::*;
 
 use rand::random;
 
-use std::cell::{Cell, RefCell};
+use std::cell::{ Cell, RefCell };
 
 /**
  * Optimizations very much needed.
@@ -21,7 +21,7 @@ pub fn update_timed_events()
     {
         for event in registry.iter()
         {
-            if ::game_time() >= event.min_exe_time()
+            if game_time() >= event.min_exe_time()
             {
                 event.run();
                 event.delete();
@@ -95,7 +95,7 @@ fn schedule_event(event: impl TimedEvent + 'static)
 
 fn get_exe_time(from_delay: u64) -> u128
 {
-    ::game_time() + from_delay as u128
+    game_time() + from_delay as u128
 }
 
 pub trait TimedEvent
@@ -469,7 +469,7 @@ impl<F: Fn() -> bool> TimedEvent for RepeatedEvent<F>
 
     fn delete(&self)
     {
-        if ::game_time() >= self.max_exe_time
+        if game_time() >= self.max_exe_time
         {
             delete_event(self.id);
         }

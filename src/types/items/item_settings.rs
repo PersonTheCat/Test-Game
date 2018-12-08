@@ -1,10 +1,10 @@
-use types::classes::Class::{ self, * };
-use types::items::
+use crate::types::classes::Class::{ self, * };
+use crate::types::items::
 {
     swords::Sword,
     bows::Bow
 };
-use traits::Item;
+use crate::traits::Item;
 
 use rand::distributions::{ Weighted, WeightedChoice, Sample };
 use rand::thread_rng;

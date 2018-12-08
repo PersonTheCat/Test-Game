@@ -1,16 +1,17 @@
-use player_options::{ Response, Dialogue, Command};
-use types::items::pass_books::PassBook;
-use traits::{ Area, Entity };
-use player_data::PlayerMeta;
-use types::classes::Class;
-use var_access;
-use text;
+use crate::util::player_options::{ Response, Dialogue, Command};
+use crate::types::items::pass_books::PassBook;
+use crate::traits::{ Area, Entity };
+use crate::player_data::PlayerMeta;
+use crate::types::classes::Class;
+use crate::util::access;
+use crate::text;
+use crate::*;
 
 use std::cell::RefCell;
 
 use rand::{ Rng, thread_rng };
 
-static ENTRANCE_TEXT: [&'static str; 5] =
+static ENTRANCE_TEXT: [&str; 5] =
 [
     "Welcome to station #<station>. Our trains can make it\n\
     as far as <south>km south, while our north-bound travels\n\
@@ -39,7 +40,7 @@ static ENTRANCE_TEXT: [&'static str; 5] =
     conductor, if you need anything else."
 ];
 
-static TRAVEL_PASS_INFO_TEXT: [&'static str; 3] =
+static TRAVEL_PASS_INFO_TEXT: [&str; 3] =
 [
     "You can use travel passes to travel between towns.\n\
     Travel passes are stored inside of a booklet, which\n\
@@ -61,7 +62,7 @@ static TRAVEL_PASS_INFO_TEXT: [&'static str; 3] =
     purchase."
 ];
 
-static PASS_PURCHASE_INFO_TEXT: [&'static str; 3] =
+static PASS_PURCHASE_INFO_TEXT: [&str; 3] =
 [
     "We're currently selling passes at about <rate>g per km.∫0.5\n\
     If you need a booklet to hold more, you can buy one\n\
@@ -76,7 +77,7 @@ static PASS_PURCHASE_INFO_TEXT: [&'static str; 3] =
     If needed, you can also buy a booklet for about <booklet>g."
 ];
 
-static PASS_PURCHASE_TEXT: [&'static str; 3] =
+static PASS_PURCHASE_TEXT: [&str; 3] =
 [
     "We'll sell you a pass for anywhere from town #<south>\n\
     to town #<north>. The current rate per town is <rate>g.∫0.5\n\
@@ -97,7 +98,7 @@ static PASS_PURCHASE_TEXT: [&'static str; 3] =
     say so, if that's what you need."
 ];
 
-static PASS_USE_TEXT: [&'static str; 3] =
+static PASS_USE_TEXT: [&str; 3] =
 [
     "Very well. Just let me know the number of the town\n\
     you'd like to travel to and we'll set off.",
@@ -175,7 +176,7 @@ impl Area for Station
             ("<north>", self.distance_north.to_string())
         ];
 
-        let choose = ::choose(&ENTRANCE_TEXT);
+        let choose = choose(&ENTRANCE_TEXT);
         let ret = text::apply_replacements(choose, &replacements);
 
         Some(ret)
@@ -183,7 +184,7 @@ impl Area for Station
 
     fn get_title(&self) -> String { self.area_title.clone() }
 
-    fn get_specials_for_player(&self, player: &mut PlayerMeta, responses: &mut Vec<Response>)
+    fn get_specials(&self, player: &mut PlayerMeta, responses: &mut Vec<Response>)
     {
         let town_num = self.get_town_num();
         let south_dist = self.distance_south;
@@ -235,8 +236,8 @@ pub fn travel_pass_info(text: &'static str) -> Response
 {
     Response::action_only(text, | player |
     {
-        let info = ::choose(&TRAVEL_PASS_INFO_TEXT);
-        ::send_blocking_message(player, info, ::TEXT_SPEED);
+        let info = choose(&TRAVEL_PASS_INFO_TEXT);
+        send_blocking_message(player, info, TEXT_SPEED);
     })
 }
 
@@ -244,7 +245,7 @@ pub fn pass_purchase_info(town_num: usize, text: &'static str) -> Response
 {
     Response::action_only(text, move | player |
     {
-        let info = ::choose(&PASS_PURCHASE_INFO_TEXT);
+        let info = choose(&PASS_PURCHASE_INFO_TEXT);
 
         let replacements = vec!
         [
@@ -254,7 +255,7 @@ pub fn pass_purchase_info(town_num: usize, text: &'static str) -> Response
 
         let info = text::apply_replacements(info, &replacements);
 
-        ::send_blocking_message(player, &info, ::TEXT_SPEED);
+        send_blocking_message(player, &info, TEXT_SPEED);
     })
 }
 
@@ -281,7 +282,7 @@ pub fn _use_pass(player_id: usize, town_num: usize, south_dist: usize, north_dis
     {
         if args.len() < 1
         {
-            ::send_short_message(player, "Excuse me?");
+            send_short_message(player, "Excuse me?");
             return;
         }
         let town_num: usize = match args[0].parse()
@@ -289,42 +290,42 @@ pub fn _use_pass(player_id: usize, town_num: usize, south_dist: usize, north_dis
             Ok(num) => num,
             Err(_) =>
             {
-                ::send_short_message(player, "I'm not sure exactly where you're trying to go.");
+                send_short_message(player, "I'm not sure exactly where you're trying to go.");
                 return;
             }
         };
         if town_num > north_bound || town_num < south_bound
         {
-            ::send_short_message(player,
+            send_short_message(player,
                 "Sorry, but we can't quite take you home from here.\n\
                 You'll need to make a connection to get that far."
             );
             return;
         }
 
-        var_access::access_player_meta(player, | meta |
+        access::player_meta(player, |meta |
         {
             if !player_has_pass(meta, town_num)
             {
-                ::send_short_message(player,
+                send_short_message(player,
                     "Looks like you don't actually have a pass\n\
                     for this area. Maybe buy one or try again."
                 );
             }
 
-            let new_coords = var_access::access_town(town_num, | town |
+            let new_coords = access::town(town_num, |town |
             {
                 town.locate_area("station")
                     .expect("Tried to travel to a town without a station.")
             });
 
-            var_access::access_area(meta.coordinates, | current_area |
+            access::area(meta.coordinates, |current_area |
             {
-                var_access::access_area(new_coords, | new_area |
+                access::area(new_coords, |new_area |
                 {
-                    if let Err(_) = ::try_delete_options(player)
+                    if let Err(_) = try_delete_options(player)
                     {
-                        ::send_short_message(player,
+                        send_short_message(player,
                             "You should finish your current\n\
                             dialogues before moving on."
                         );
@@ -332,11 +333,11 @@ pub fn _use_pass(player_id: usize, town_num: usize, south_dist: usize, north_dis
                     }
 
                     current_area.transfer_to_area(player, new_area);
-                    let next = new_area.get_dialogue_for_player(player);
-                    ::register_options(next);
-                    ::update_options_manually(player);
+                    let next = new_area.get_dialogue(player);
+                    register_options(next);
+                    update_options_manually(player);
 
-                    ::send_blocking_message(player, "∫0.3.∫0.3 .∫0.3 .∫0.3 .∫0.3 .",::TEXT_SPEED);
+                    send_blocking_message(player, "∫0.3.∫0.3 .∫0.3 .∫0.3 .∫0.3 .",TEXT_SPEED);
                 })
             })
             .expect("Player's current area could not be found.");
@@ -358,7 +359,7 @@ pub fn _use_pass(player_id: usize, town_num: usize, south_dist: usize, north_dis
 
 fn player_has_pass(player: &PlayerMeta, town_num: usize) -> bool
 {
-    var_access::access_entity(player.get_accessor(), | entity |
+    access::entity(player.get_accessor(), |entity |
     {
         let inventory = entity.get_inventory()
             .expect("Player no longer has an inventory.");
@@ -403,7 +404,7 @@ pub fn _purchase_booklet(player_id: usize, town_num: usize) -> Dialogue
     responses.push(Response::simple("Walk away.",
     | player: usize |
     {
-        ::add_short_message(player,
+        add_short_message(player,
             "No harm done. Just let me know if you\n\
             need anything else."
         );
@@ -411,7 +412,7 @@ pub fn _purchase_booklet(player_id: usize, town_num: usize) -> Dialogue
     responses.push(Response::simple("Purchase item.",
     move | player: usize |
     {
-        var_access::access_player_context(player, | _, _, _, entity |
+        access::player_context(player, |_, _, _, entity |
         {
             let inventory = entity.get_inventory()
                 .expect("Player no longer has an inventory.");
@@ -423,11 +424,11 @@ pub fn _purchase_booklet(player_id: usize, town_num: usize) -> Dialogue
                 inventory.add_item(Box::new(booklet), Some(entity));
                 entity.take_money(price);
 
-                ::add_short_message(player, "Thanks for your purchase!");
+                add_short_message(player, "Thanks for your purchase!");
             }
             else
             {
-                ::add_short_message(player,
+                add_short_message(player,
                     "Looks like you don't have enough space\n\
                     for that. Make some and come back later."
                 );
@@ -449,7 +450,7 @@ pub fn confirm_purchase_booklet(player_id: usize, price: u32)
 {
     let on_yes = move | player: usize |
     {
-        var_access::access_player_context(player, | _, _, _, entity |
+        access::player_context(player, |_, _, _, entity |
         {
             let inventory = entity.get_inventory()
                 .expect("Player no longer has an inventory.");
@@ -461,11 +462,11 @@ pub fn confirm_purchase_booklet(player_id: usize, price: u32)
                 inventory.add_item(Box::new(booklet), Some(entity));
                 entity.take_money(price);
 
-                ::add_short_message(player, "Thanks for your purchase!");
+                add_short_message(player, "Thanks for your purchase!");
             }
             else
             {
-                ::add_short_message(player,
+                add_short_message(player,
                     "Looks like you don't have enough space\n\
                     for that. Make some and come back later."
                 );
@@ -474,13 +475,13 @@ pub fn confirm_purchase_booklet(player_id: usize, price: u32)
     };
     let on_no = | player: usize |
     {
-        ::add_short_message(player,
+        add_short_message(player,
             "No harm done. Just let me know if you\n\
             need anything else."
         );
     };
-    ::register_options(Dialogue::confirm_action(player_id, true, on_yes, on_no));
-    ::update_options_manually(player_id);
+    register_options(Dialogue::confirm_action(player_id, true, on_yes, on_no));
+    update_options_manually(player_id);
 }
 
 pub fn purchase_pass(player_id: usize, town_num: usize, south_dist: usize, north_dist: usize, text: &'static str) -> Response
@@ -514,21 +515,21 @@ pub fn _purchase_pass(player_id: usize, town_num: usize, south_dist: usize, nort
         output_desc: String::from("Buy a pass for town #x with #y uses."),
         run: Box::new(move | args: &Vec<&str>, player: usize |
         {
-            if args.len() < 1 { ::send_short_message(player, "Excuse me?"); return; }
+            if args.len() < 1 { send_short_message(player, "Excuse me?"); return; }
 
             let travel_to: usize = match args[0].parse()
             {
                 Ok(num) => num,
                 Err(_) =>
                 {
-                    ::send_short_message(player, "You may need to speak up, there.");
+                    send_short_message(player, "You may need to speak up, there.");
                     return;
                 }
             };
 
             if travel_to > north_bound || travel_to < south_bound
             {
-                ::send_short_message(player,
+                send_short_message(player,
                     "Sorry, but we can't quite take you home from here.\n\
                     You'll need to make a connection to get that far."
                 );
@@ -545,7 +546,7 @@ pub fn _purchase_pass(player_id: usize, town_num: usize, south_dist: usize, nort
                 }
                 else
                 {
-                    ::send_short_message(player,
+                    send_short_message(player,
                         "I'm not really sure how many uses\n\
                         you're looking for."
                     );
@@ -553,14 +554,14 @@ pub fn _purchase_pass(player_id: usize, town_num: usize, south_dist: usize, nort
                 }
             }
 
-            var_access::access_player_context(player, | _, _, _, entity |
+            access::player_context(player, |_, _, _, entity |
             {
                 let travel_price = get_travel_price(town_num, travel_to);
                 let full_price = get_ticket_price(travel_price, num_uses);
 
                 if !entity.can_afford(full_price)
                 {
-                    ::send_short_message(player, "Sorry, there, but you can't afford that.");
+                    send_short_message(player, "Sorry, there, but you can't afford that.");
                     return;
                 }
 
@@ -569,7 +570,7 @@ pub fn _purchase_pass(player_id: usize, town_num: usize, south_dist: usize, nort
                     Some(p) => p,
                     None =>
                     {
-                        ::send_short_message(player, "I smell hax.");
+                        send_short_message(player, "I smell hax.");
                         return;
                     }
                 };
@@ -596,7 +597,7 @@ pub fn _purchase_pass(player_id: usize, town_num: usize, south_dist: usize, nort
 
                 if let None = found
                 {
-                    ::send_short_message(player,
+                    send_short_message(player,
                         "Looks like you don't have a place for that.\n\
                         You might want to buy a new travel book."
                     );
@@ -604,7 +605,7 @@ pub fn _purchase_pass(player_id: usize, town_num: usize, south_dist: usize, nort
                 }
             });
         }),
-        next_dialogue: ::Ignore
+        next_dialogue: Ignore
     });
 
     Dialogue::new
@@ -626,7 +627,7 @@ fn confirm_purchase_pass(player_id: usize, price: u32, travel_to: usize, num_use
 
     let on_yes = move | player: usize |
     {
-        var_access::access_player_context(player, | _, _, _, entity |
+        access::player_context(player, |_, _, _, entity |
         {
             let inventory = entity.get_inventory()
                 .expect("Player no longer has an inventory.");
@@ -653,25 +654,25 @@ fn confirm_purchase_pass(player_id: usize, price: u32, travel_to: usize, num_use
             {
                 entity.take_money(price);
 
-                ::add_short_message(player,
+                add_short_message(player,
                     "Thanks for doing business with us!\n\
                     You can use this whenever you like."
                 );
             }
             else
             {
-                ::add_short_message(player, "Huh... That's odd. Looks like you no longer have a book.");
+                add_short_message(player, "Huh... That's odd. Looks like you no longer have a book.");
             }
         });
     };
     let on_no = | player: usize |
     {
-        ::add_short_message(player,
+        add_short_message(player,
             "That's too bad∫0.2.∫0.2.∫0.2.∫0.3 Let me know if you\n\
             need anything else."
         );
     };
-    ::register_options(Dialogue::confirm_action(player_id, true, on_yes, on_no));
-    ::update_options_manually(player_id);
-    ::send_blocking_message(player_id, &text, ::TEXT_SPEED);
+    register_options(Dialogue::confirm_action(player_id, true, on_yes, on_no));
+    update_options_manually(player_id);
+    send_blocking_message(player_id, &text, TEXT_SPEED);
 }
