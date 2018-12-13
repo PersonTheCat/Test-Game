@@ -1,7 +1,6 @@
-pub enum Direction
-{
+pub enum Direction {
     North,
     South,
     East,
-    West
+    West,
 }

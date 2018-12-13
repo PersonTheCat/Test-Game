@@ -1,9 +1,8 @@
 pub mod access;
-pub mod player_options;
-pub mod timed_events;
 pub mod directions;
-pub mod new_player_options;
 #[cfg(feature = "discord")]
 pub mod discord_bot;
+pub mod player_options;
 #[cfg(feature = "remote_clients")]
 pub mod server_host;
+pub mod timed_events;

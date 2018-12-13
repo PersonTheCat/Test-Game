@@ -1,18 +1,17 @@
+use crate::types::items::inventories::Inventory;
+use crate::util::timed_events::DelayHandler;
 use crate::messages::MessageComponent::*;
-use crate::traits::{ Entity, Item };
-use crate::types::{
-    effects::Effect,
-    items::inventories::Inventory
-};
+use crate::types::{effects::Effect};
+use crate::traits::{Entity, Item};
 use crate::util::access;
 use crate::*;
 
-use std::cell::{ Cell, RefCell };
+use std::cell::{Cell, RefCell};
+use std::sync::Arc;
 
-pub struct Player
-{
-    pub id: usize,
-    pub name: String,
+pub struct Player {
+    name: String,
+    metadata: Arc<PlayerMeta>,
     health: Cell<u32>,
     base_damage: Cell<u32>,
     max_health: Cell<u32>,
@@ -23,11 +22,10 @@ pub struct Player
     money: Cell<u32>,
     weapon_slot: Inventory,
     offhand_slot: Inventory,
-    current_effects: RefCell<Vec<Effect>>
+    current_effects: RefCell<Vec<Effect>>,
 }
 
-impl Player
-{
+impl Player {
     pub const MIN_DAMAGE: u32 = 5;
     pub const MAX_HEALTH: u32 = 100;
     pub const MIN_HEALTH: u32 = 5;
@@ -36,12 +34,10 @@ impl Player
     pub const MAX_ITEM_SPEED: i32 = 10000;
     pub const MIN_ITEM_SPEED: i32 = -10000;
 
-    pub fn new(id: usize, name: String) -> Player
-    {
-        Player
-        {
-            id,
-            name,
+    pub fn new(meta: Arc<PlayerMeta>) -> Player {
+        Player {
+            name: meta.get_name(),
+            metadata: meta,
             health: Cell::new(20),
             base_damage: Cell::new(5),
             max_health: Cell::new(20),
@@ -52,27 +48,27 @@ impl Player
             money: Cell::new(0),
             weapon_slot: Inventory::new(1),
             offhand_slot: Inventory::new(1),
-            current_effects: RefCell::new(Vec::new())
+            current_effects: RefCell::new(Vec::new()),
         }
     }
 
-    /**
-     * This is used to correct effect values
-     * So that removing the effect will
-     * properly restore the original levels.
-     */
+    pub fn send_message(&self, typ: MessageComponent, msg: &str, ms_speed: u64) -> DelayHandler {
+        self.metadata.send_message(typ, msg, ms_speed)
+    }
+
+    pub fn send_short_message(&self, msg: &str) {
+        self.metadata.send_short_message(msg);
+    }
+
+    /// This is used to correct effect values so that removing
+    /// the effect will properly restore the original levels.
     pub fn update_effect<F>(&self, name: &str, callback: F) -> bool
         where F: FnOnce(&mut Effect)
     {
         let mut effects = self.current_effects.borrow_mut();
-        let index = effects.iter().position(| e |
-        {
-            e.name == name
-        });
-        if let Some(num) = index
-        {
-            if let Some(ref mut effect) = effects.get_mut(num)
-            {
+        let index = effects.iter().position(|e| e.name == name);
+        if let Some(num) = index {
+            if let Some(ref mut effect) = effects.get_mut(num) {
                 callback(effect);
                 return true;
             }
@@ -80,141 +76,134 @@ impl Player
         false
     }
 
-    pub fn has_special_item(&self, typ: &str, _info: Option<&str>) -> bool
-    {
-        match self.main_inventory.for_each_item(| item |
-        {
-            if item.get_type() == typ
-            {
+    pub fn has_special_item(&self, typ: &str, _info: Option<&str>) -> bool {
+        self.main_inventory.for_each_item(|item| {
+            if item.get_type() == typ {
                 Some(true)
+            } else {
+                None
             }
-            else { None }
-        }){
-            Some(_) => true,
-            None => false
-        }
+        })
+        .is_some()
     }
 }
 
-impl Entity for Player
-{
-    fn get_id(&self) -> usize { self.id }
+impl Entity for Player {
+    fn get_id(&self) -> usize {
+        self.metadata.get_player_id()
+    }
 
-    fn get_name(&self) -> &String { &self.name }
+    fn get_name(&self) -> &String {
+        &self.name
+    }
 
-    fn set_max_health(&self, val: u32)
-    {
+    fn set_max_health(&self, val: u32) {
         self.max_health.set(val);
         let new = self.max_health.get();
 
-        if new > Self::MAX_HEALTH
-        {
+        if new > Self::MAX_HEALTH {
             self.max_health.set(Self::MAX_HEALTH);
-        }
-        else if new < Self::MIN_HEALTH
-        {
+        } else if new < Self::MIN_HEALTH {
             self.max_health.set(Self::MIN_HEALTH);
         }
     }
 
-    fn get_max_health(&self) -> u32 { self.max_health.get() }
+    fn get_max_health(&self) -> u32 {
+        self.max_health.get()
+    }
 
-    fn set_health(&self, health: u32)
-    {
+    fn set_health(&self, health: u32) {
         self.health.set(health);
         self.update_health_bar();
     }
 
-    fn get_health(&self) -> u32 { self.health.get() + self.health_bonus.get() }
-
-    fn update_health_bar(&self)
-    {
-        update_player_message(self.id, HealthBar, &self.get_health_bar());
+    fn get_health(&self) -> u32 {
+        self.health.get() + self.health_bonus.get()
     }
 
-    fn set_base_damage(&self, val: u32)
-    {
+    fn update_health_bar(&self) {
+        self.metadata.update_message(HealthBar, &self.get_health_bar());
+    }
+
+    fn set_base_damage(&self, val: u32) {
         self.base_damage.set(val);
         let new = self.base_damage.get();
 
-        if new < Self::MIN_DAMAGE
-        {
+        if new < Self::MIN_DAMAGE {
             self.base_damage.set(Self::MIN_DAMAGE);
         }
     }
 
-    fn get_base_damage(&self) -> u32 { self.base_damage.get() }
+    fn get_base_damage(&self) -> u32 {
+        self.base_damage.get()
+    }
 
-    fn set_attack_speed(&self, val: i32)
-    {
+    fn set_attack_speed(&self, val: i32) {
         self.attack_speed.set(val);
         let new = self.attack_speed.get();
 
-        if new > Self::MAX_ATK_SPEED
-        {
+        if new > Self::MAX_ATK_SPEED {
             self.attack_speed.set(Self::MAX_ATK_SPEED);
-        }
-        else if new < Self::MIN_ATK_SPEED
-        {
+        } else if new < Self::MIN_ATK_SPEED {
             self.attack_speed.set(Self::MIN_ATK_SPEED);
         }
     }
 
-    fn get_attack_speed(&self) -> i32 { self.attack_speed.get() }
+    fn get_attack_speed(&self) -> i32 {
+        self.attack_speed.get()
+    }
 
-    fn set_item_speed(&self, val: i32)
-    {
+    fn set_item_speed(&self, val: i32) {
         self.item_speed.set(val);
         let new = self.item_speed.get();
 
-        if new > Self::MAX_ITEM_SPEED
-        {
+        if new > Self::MAX_ITEM_SPEED {
             self.item_speed.set(Self::MAX_ITEM_SPEED);
-        }
-        else if new < Self::MIN_ITEM_SPEED
-        {
+        } else if new < Self::MIN_ITEM_SPEED {
             self.item_speed.set(Self::MIN_ITEM_SPEED);
         }
     }
 
-    fn get_item_speed(&self) -> i32 { self.item_speed.get() }
+    fn get_item_speed(&self) -> i32 {
+        self.item_speed.get()
+    }
 
-    fn get_inventory(&self) -> Option<&Inventory> { Some(&self.main_inventory) }
+    fn get_inventory(&self) -> Option<&Inventory> {
+        Some(&self.main_inventory)
+    }
 
-    fn give_item(&self, item: Box<Item>)
-    {
+    fn give_item(&self, item: Box<Item>) {
         self.main_inventory.add_item(item, Some(self));
     }
 
-    fn take_item_id(&self, id: usize) -> Option<Box<Item>>
-    {
-        let item = self.main_inventory.take_item_id(id, Some(self));
-
-        if let Some(_) = item { return item; }
-
-        let item = self.weapon_slot.take_item_id(id, Some(self));
-
-        if let Some(_) = item { return item; }
-
+    fn take_item_id(&self, id: usize) -> Option<Box<Item>> {
+        if let Some(item) = self.main_inventory.take_item_id(id, Some(self)) {
+            return Some(item);
+        }
+        if let Some(item) = self.weapon_slot.take_item_id(id, Some(self)) {
+            return Some(item);
+        }
         self.offhand_slot.take_item_id(id, Some(self))
     }
 
-    fn equip_item(&self, slot_num: usize)
-    {
-        if slot_num > self.main_inventory.current_size() { return; }
+    fn equip_item(&self, slot_num: usize) {
+        if slot_num > self.main_inventory.current_size() {
+            return;
+        }
 
-        let is_weapon = self.main_inventory.get_item_info(slot_num - 1, 0, | item |
-        {
+        let is_weapon = self.main_inventory.get_item_info(slot_num - 1, 0, |item| {
             item.on_equip(self);
             item.is_weapon()
         });
 
-        let slot = if is_weapon { &self.weapon_slot } else { &self.offhand_slot };
+        let slot = if is_weapon {
+            &self.weapon_slot
+        } else {
+            &self.offhand_slot
+        };
 
-        if slot.current_size() > 0
-        {
-            slot.get_item_info(0, 0, | item |
-            {
+        if slot.current_size() > 0 {
+            slot.get_item_info(0, 0, |item| {
                 item.on_unequip(self);
             });
 
@@ -225,211 +214,135 @@ impl Entity for Player
         self.update_health_bar();
     }
 
-    fn use_item(&self, item_num: usize, use_on: Option<&Entity>)
-    {
-        if self.main_inventory.current_size() < item_num
-        {
-            send_short_message(self.id, "Invalid item #.");
+    fn use_item(&self, item_num: usize, use_on: Option<&Entity>) {
+        if self.main_inventory.current_size() < item_num {
+            temp_send_short_message(self.get_id(), "Invalid item #.");
             return;
         }
 
-        access::area(self.get_coordinates(), |area |
-        {
-            self.main_inventory.on_use_item(item_num - 1, Some(self), use_on, area);
+        access::area(self.get_coordinates(), |area| {
+            self.main_inventory
+                .on_use_item(item_num - 1, Some(self), use_on, area);
         })
         .expect("The player's current area could not be found.");
     }
 
-    fn use_primary(&self)
-    {
-        if self.weapon_slot.current_size() < 1
-        {
-            send_short_message(self.id, "This item no longer exists.");
+    fn use_primary(&self) {
+        if self.weapon_slot.current_size() < 1 {
+            self.metadata.send_short_message("This item no longer exists.");
             return;
         }
 
-        access::area(self.get_coordinates(), |area |
-        {
+        access::area(self.get_coordinates(), |area| {
             self.weapon_slot.on_use_item(0, Some(self), None, area);
         })
         .expect("The player's current area could not be found.");
     }
 
-    fn use_secondary(&self)
-    {
-        if self.offhand_slot.current_size() < 1
-        {
-            send_short_message(self.id, "This item no longer exists.");
+    fn use_secondary(&self) {
+        if self.offhand_slot.current_size() < 1 {
+            self.metadata.send_short_message("This item no longer exists.");
             return;
         }
 
-        access::area(self.get_coordinates(), |area |
-        {
+        access::area(self.get_coordinates(), |area| {
             self.offhand_slot.on_use_item(0, Some(self), None, area);
         })
         .expect("The player's current area could not be found.");
     }
 
-    fn get_primary(&self) -> String
-    {
-        if self.weapon_slot.current_size() > 0
-        {
-            return self.weapon_slot.get_item_info(0, 0, | item |
-            {
-                item.get_name().clone()
-            });
+    fn get_primary(&self) -> String {
+        if self.weapon_slot.current_size() > 0 {
+            return self.weapon_slot
+                .get_item_info(0, 0, |item| item.get_name().clone());
         }
         String::from("None")
     }
 
-    fn get_secondary(&self) -> String
-    {
-        if self.offhand_slot.current_size() > 0
-        {
-            return self.offhand_slot.get_item_info(0, 0, | item |
-            {
-                item.get_name().clone()
-            });
+    fn get_secondary(&self) -> String {
+        if self.offhand_slot.current_size() > 0 {
+            return self.offhand_slot
+                .get_item_info(0, 0, |item| item.get_name().clone());
         }
         String::from("None")
     }
 
-    fn give_money(&self, amount: u32)
-    {
+    fn give_money(&self, amount: u32) {
         let current = self.money.get();
-
         self.money.set(current + amount);
-
         self.update_health_bar();
     }
 
-    fn take_money(&self, amount: u32)
-    {
+    fn take_money(&self, amount: u32) {
         let current = self.money.get();
-
         self.money.set(current.checked_sub(amount).unwrap_or(0));
-
         self.update_health_bar();
     }
 
-    fn get_money(&self) -> u32
-    {
+    fn get_money(&self) -> u32 {
         self.money.get()
     }
 
-    fn has_effect(&self, name: &str) -> bool
-    {
-        let effects = self.current_effects.borrow();
-
-        for effect in effects.iter()
-        {
-            if effect.name == name
-            {
-                return true;
-            }
-        }
-        false
+    fn has_effect(&self, name: &str) -> bool {
+        self.current_effects.borrow()
+            .iter()
+            .find(|e| e.name == name)
+            .is_some()
     }
 
-    fn give_effect(&self, effect: Effect)
-    {
-        let mut effects = self.current_effects.borrow_mut();
-
-        effects.push(effect);
-
+    fn give_effect(&self, effect: Effect) {
+        self.current_effects.borrow_mut().push(effect);
         self.update_health_bar();
     }
 
-    fn apply_effect(&self, name: &str)
-    {
-        let effects = self.current_effects.borrow();
-
-        match effects.iter().find(| e | { e.name == name })
-        {
-            Some(effect) => effect.apply(self),
-            None => {}
-        };
+    fn apply_effect(&self, name: &str) {
+        self.current_effects.borrow()
+            .iter()
+            .find(|e| e.name == name)
+            .and_then(|e| Some(e.apply(self)));
     }
 
-    fn remove_effect(&self, name: &str)
-    {
+    fn remove_effect(&self, name: &str) {
         let mut effects = self.current_effects.borrow_mut();
 
-        let index = effects.iter().position(| e |
-        {
-            e.name == name
-        });
-        match index
-        {
-            Some(num) =>
-            {
-                let effect = effects.remove(num);
-                effect.remove(self);
-            },
-            None => {}
-        }
+        effects.iter()
+            .position(|e| e.name == name)
+            .and_then(|i| {
+                let effect = effects.remove(i);
+                Some(effect.remove(self))
+            });
     }
 
-    fn clear_effects(&self)
-    {
-        let mut effects = self.current_effects.borrow_mut();
-
-        effects.clear();
+    fn clear_effects(&self) {
+        self.current_effects.borrow_mut().clear();
     }
 
-    fn kill_entity(&self)
-    {
-        access::player_meta(self.id, |meta |
-        {
-            access::area(meta.coordinates, |current_area |
-            {
-                let current_town = meta.coordinates.0;
-
-                access::starting_area(current_town, |starting_area |
-                {
-                    current_area.transfer_to_area(self.id, starting_area);
-                });
-            })
+    fn kill_entity(&self) {
+        self.metadata.area(|current| {
+            let current_town = current.get_coordinates().0;
+            access::starting_area(current_town, |new| {
+                current.transfer_to_area(self.get_id(), new)
+            });
         });
     }
 
-    fn as_player(&self) -> Option<&Player>
-    {
+    fn as_player(&self) -> Option<&Player> {
         Some(self)
     }
 
-    fn set_coordinates(&self, coords: (usize, usize, usize))
-    {
-        access::player_meta(self.id, |meta |
-        {
-            meta.coordinates = coords;
-        });
+    fn set_coordinates(&self, coords: (usize, usize, usize)) {
+        self.metadata.set_coordinates(coords);
     }
 
-    fn get_coordinates(&self) -> (usize, usize, usize)
-    {
-        access::player_meta(self.id, |meta |
-        {
-            meta.coordinates
-        })
-        .expect("Player data no longer exists.")
+    fn get_coordinates(&self) -> (usize, usize, usize) {
+        self.metadata.get_coordinates()
     }
 
-    fn on_enter_area(&self, coords: (usize, usize, usize))
-    {
-        access::player_meta(self.id, |meta |
-        {
-            meta.coordinates = coords;
-        });
+    fn on_enter_area(&self, coords: (usize, usize, usize)) {
+        self.set_coordinates(coords);
     }
 
-    fn get_type(&self) -> &str { "player" }
-}
-
-impl PartialEq for Player
-{
-    fn eq(&self, other: &Player) -> bool
-    {
-        self.id == other.id
+    fn get_type(&self) -> &str {
+        "player"
     }
 }

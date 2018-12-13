@@ -1,5 +1,4 @@
-pub struct ItemDisplayInfo
-{
+pub struct ItemDisplayInfo {
     pub item_id: usize,
-    pub info: String
+    pub info: String,
 }
