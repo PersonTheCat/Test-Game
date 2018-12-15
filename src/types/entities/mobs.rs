@@ -44,7 +44,7 @@ impl Entity for Mob {
         Some(self)
     }
 
-    fn get_type(&self) -> &str {
+    fn get_type(&self) -> &'static str {
         "mob"
     }
 }

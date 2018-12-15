@@ -334,7 +334,7 @@ impl Entity for Player {
         self.set_coordinates(coords);
     }
 
-    fn get_type(&self) -> &str {
+    fn get_type(&self) -> &'static str {
         "player"
     }
 }

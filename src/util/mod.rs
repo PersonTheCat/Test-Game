@@ -1,5 +1,4 @@
 pub mod access;
-pub mod directions;
 #[cfg(feature = "discord")]
 pub mod discord_bot;
 pub mod player_options;

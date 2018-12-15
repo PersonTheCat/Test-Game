@@ -8,7 +8,6 @@ use crate::types::{
 
 use crate::player_data::PlayerMeta;
 use crate::traits::Area;
-use crate::util::access;
 use crate::*;
 
 use self::Direction::*;
@@ -103,7 +102,7 @@ impl Town {
     /// name of a town.
     pub fn find_name(town: usize) -> Option<String> {
         TOWN_REGISTRY.read()
-            .get(&(town - 1))
+            .get(&town)
             .and_then(|t| Some(t.name.clone()))
     }
 
@@ -111,13 +110,13 @@ impl Town {
     /// class of a town.
     pub fn find_class(town: usize) -> Option<Class> {
         TOWN_REGISTRY.read()
-            .get(&(town - 1))
+            .get(&town)
             .and_then(|t| Some(t.class))
     }
 
     pub fn find_map(town: usize, player: &PlayerMeta) -> Option<String> {
         TOWN_REGISTRY.read()
-            .get(&(town - 1))
+            .get(&town)
             .and_then(|t| Some(t.get_map(player)))
     }
 

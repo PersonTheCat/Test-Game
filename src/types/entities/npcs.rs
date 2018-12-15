@@ -199,7 +199,7 @@ impl Entity for NPC {
         self.coordinates.load(SeqCst)
     }
 
-    fn get_type(&self) -> &str {
+    fn get_type(&self) -> &'static str {
         "npc"
     }
 }
@@ -246,7 +246,7 @@ impl Entity for Shopkeeper {
 
     fn kill_entity(&self) {}
 
-    fn get_type(&self) -> &str {
+    fn get_type(&self) -> &'static str {
         "keeper"
     }
 }

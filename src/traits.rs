@@ -3,6 +3,7 @@ use crate::types::entities::{mobs::Mob, npcs::NPC, players::Player};
 use crate::types::items::{self, bows::Bow, display_info::ItemDisplayInfo, inventories::Inventory, swords::Sword};
 use crate::player_data::PlayerMeta;
 use crate::text;
+use crate::types::towns::Town;
 use crate::util::access::{self, EntityAccessor};
 use crate::util::player_options::{Command, Dialogue, Response};
 use crate::*;
@@ -91,7 +92,7 @@ pub trait Area: EntityHolder + AreaTools {
     /// map of the current town, but it would be possible to
     /// concatenate additional info manually.
     fn get_dialogue_info(&self, player: &PlayerMeta) -> Option<String> {
-        Some(get_new_map(self.get_coordinates().0, player))
+        Town::find_map(self.get_coordinates().0, player)
     }
 
     /// To-do
@@ -131,7 +132,7 @@ pub trait Area: EntityHolder + AreaTools {
     fn get_entity_interactions(&self, player: &PlayerMeta, responses: &mut Vec<Response>) {
         let lock = self.borrow_entity_lock();
         let entities = lock.iter()
-            .filter(|e| e.get_id != player.get_player_id());
+            .filter(|e| e.get_id() != player.get_player_id());
 
         for entity in entities {
             // Make sure there is response info and then generate dialogue from it.
@@ -140,8 +141,8 @@ pub trait Area: EntityHolder + AreaTools {
             }
             // Special interactions for other players.
             if let Some(_) = entity.as_player() {
-                responses.push(wave_response(entity));
-                responses.push(trade_response(entity));
+                responses.push(wave_response(&**entity));
+                responses.push(trade_response(&**entity));
             }
         }
     }

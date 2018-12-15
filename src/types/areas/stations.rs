@@ -92,9 +92,13 @@ static PASS_USE_TEXT: [&str; 3] = [
      travel to and we'll leave shortly.",
 ];
 
-//The increase per-station, not from/to stations.
+/// The increase per-station, not from/to stations.
 const RATE_PER_TOWN: f32 = 1.26;
+
+/// The price increase for each subsequent reuse.
 const REUSE_PRICE_RATE: f32 = 1.05;
+
+/// The minimum price of each pass purchased here.
 const STARTING_PRICE: u32 = 600;
 
 #[derive(EntityHolder, AreaTools)]
@@ -109,6 +113,7 @@ pub struct Station {
 }
 
 impl Station {
+    /// The standard constructor format required by `area_settings`.
     pub fn new(_class: Class, area_num: usize, coordinates: (usize, usize, usize)) -> Box<Area> {
         let town_num = coordinates.0;
         // The distance for towns #1-3 is fixed.
@@ -197,26 +202,33 @@ impl Area for Station {
     }
 }
 
-//The rate of traveling to another town from here.
+/// The rate of traveling to another town from here.
 pub fn get_travel_rate(town_num: usize) -> f32 {
     (STARTING_PRICE as f32 / town_num as f32) + (RATE_PER_TOWN * town_num as f32)
 }
 
+/// The specific price for traveling to another town
+/// from the specified station.
 pub fn get_travel_price(town_num: usize, travel_to: usize) -> u32 {
     let rate = get_travel_rate(town_num);
     let distance = (travel_to as isize - town_num as isize).abs();
-
     (rate * distance as f32) as u32
 }
 
+/// The price of purchasing a pass with the specified
+/// number of uses.
 pub fn get_ticket_price(travel_price: u32, num_uses: u32) -> u32 {
     travel_price + (num_uses as f32 * REUSE_PRICE_RATE) as u32
 }
 
+/// The price of purchasing an empty `Passbook` from
+/// this station.
 pub fn get_booklet_price(town_num: usize) -> u32 {
     (town_num as f32 * RATE_PER_TOWN) as u32 + 10
 }
 
+/// Displays information to the user about buying what
+/// travel passes do.
 pub fn travel_pass_info(text: &'static str) -> Response {
     Response::action_only(text, |player| {
         let info = choose(&TRAVEL_PASS_INFO_TEXT);
@@ -224,6 +236,8 @@ pub fn travel_pass_info(text: &'static str) -> Response {
     })
 }
 
+/// Displays information to the user about purchasing
+/// a pass from this specific station.
 pub fn pass_purchase_info(town_num: usize, text: &'static str) -> Response {
     Response::action_only(text, move |player| {
         let info = choose(&PASS_PURCHASE_INFO_TEXT);
@@ -237,13 +251,17 @@ pub fn pass_purchase_info(town_num: usize, text: &'static str) -> Response {
     })
 }
 
+/// Takes the player to `_use_pass()`, a dialogue used
+/// for travelling to other towns.
 pub fn use_pass(player_id: usize, town_num: usize, south_dist: usize, north_dist: usize, text: &'static str) -> Response {
     Response::goto_dialogue(text, move |_| {
         _use_pass(player_id, town_num, south_dist, north_dist)
     })
 }
 
-pub fn _use_pass(player_id: usize, town_num: usize, south_dist: usize, north_dist: usize, )-> Dialogue {
+/// The actual dialogue used for travelling to other
+/// towns.
+pub fn _use_pass(player_id: usize, town_num: usize, south_dist: usize, north_dist: usize) -> Dialogue {
     let south_bound = town_num - south_dist;
     let north_bound = town_num + north_dist;
 
@@ -264,6 +282,9 @@ pub fn _use_pass(player_id: usize, town_num: usize, south_dist: usize, north_dis
     }
 }
 
+/// The command used by `_use_pass()`, which handles
+/// the users input to determine where to them, and
+/// subsequently takes them there.
 fn use_pass_command(north_bound: usize, south_bound: usize) -> Command {
     Command::manual_desc_no_next(
         "goto", "goto #", "Go to town #.",
@@ -275,6 +296,9 @@ fn use_pass_command(north_bound: usize, south_bound: usize) -> Command {
     )
 }
 
+/// Handles parsing the arguments sent to
+/// `use_pass_command()`. Informs the player of
+/// anything that goes wrong.
 fn parse_use_pass_arguments(args: &Vec<&str>, player: &PlayerMeta, north_bound: usize, south_bound: usize) -> Result<(usize, usize, usize), ()> {
     // Ensure that there are enough arguments.
     if args.len() < 1 {
@@ -319,6 +343,9 @@ fn parse_use_pass_arguments(args: &Vec<&str>, player: &PlayerMeta, north_bound: 
         .expect("This town's station did not generate correctly."))
 }
 
+/// Determines whether the entity associated with `player`
+/// has a pass to the input `town_num`. Does not yet
+/// check outside of the main inventory.
 fn player_has_pass(player: &PlayerMeta, town_num: usize) -> bool {
     player.entity(|e|{
         e.get_inventory()
@@ -328,6 +355,8 @@ fn player_has_pass(player: &PlayerMeta, town_num: usize) -> bool {
     })
 }
 
+/// Responsible for transferring the player to its new
+/// area and displaying the "animation" to the screen.
 fn handle_use_pass(player: &PlayerMeta, new_coords: (usize, usize, usize)) {
     access::area(player.get_coordinates(), |current_area| {
         access::area(new_coords, |new_area| {
@@ -340,10 +369,15 @@ fn handle_use_pass(player: &PlayerMeta, new_coords: (usize, usize, usize)) {
     });
 }
 
+/// Takes the player to `_purchase_booklet()`, a
+/// dialogue used for the player to purchase a new
+/// travel booklet.
 pub fn purchase_booklet(player_id: usize, town_num: usize, text: &'static str) -> Response {
     Response::goto_dialogue(text, move |_| _purchase_booklet(player_id, town_num))
 }
 
+/// The actual dialogue used for purchasing a new
+/// travel booklet.
 pub fn _purchase_booklet(player_id: usize, town_num: usize) -> Dialogue {
     let price = get_booklet_price(town_num);
     let title = String::from("Confirm Purchase");
@@ -355,12 +389,17 @@ pub fn _purchase_booklet(player_id: usize, town_num: usize) -> Dialogue {
     Dialogue::simple(title, text, responses, player_id)
 }
 
+/// A simple response used by `_purchase_booklet()`
+/// which returns the player to the main dialogue,
+/// displaying a short message.
 fn purchase_booklet_walk_away() -> Response {
     Response::simple("Walk away.", |player| {
         player.add_short_message("§No harm done. Just let me know if you need anything else.");
     })
 }
 
+/// The response used by `_purchase_booklet()`
+/// responsible for taking
 fn purchase_booklet_response(price: u32) -> Response {
     Response::simple("Purchase item.", move |player| {
         player.entity(|entity| {
@@ -384,6 +423,9 @@ fn purchase_booklet_response(price: u32) -> Response {
     })
 }
 
+/// Registers an additional dialogue for the player
+/// which lets them confirm whether they would like
+/// to purchase the new booklet.
 pub fn confirm_purchase_booklet(player: &PlayerMeta, price: u32) {
     let on_yes = move |player: &PlayerMeta| {
         player.entity(|entity| {
@@ -418,12 +460,15 @@ pub fn confirm_purchase_booklet(player: &PlayerMeta, price: u32) {
     player.update_options();
 }
 
+/// A response which directs the player to `purchase_pass()`.
 pub fn purchase_pass(player_id: usize, town_num: usize, south_dist: usize, north_dist: usize, text: &'static str) -> Response {
     Response::goto_dialogue(text, move |_| {
         _purchase_pass(player_id, town_num, south_dist, north_dist)
     })
 }
 
+/// The actual dialogue used by `purchase_pass()`, responsible
+/// for letting the player add a new pass to its travel booklet.
 pub fn _purchase_pass(player_id: usize, town_num: usize, south_dist: usize, north_dist: usize)-> Dialogue {
     let south_bound = town_num - south_dist;
     let north_bound = town_num + north_dist;
@@ -451,6 +496,8 @@ pub fn _purchase_pass(player_id: usize, town_num: usize, south_dist: usize, nort
     }
 }
 
+/// A command used by `_purchase_pass()` which lets the player
+/// specify which town they would like to purchase a pass to.
 fn purchase_pass_command(town_num: usize, north_bound: usize, south_bound: usize) -> Command {
     Command {
         name: String::from("buy"),
@@ -467,6 +514,8 @@ fn purchase_pass_command(town_num: usize, north_bound: usize, south_bound: usize
     }
 }
 
+/// Parses the arguments sent to `purchase_pass_command()`
+/// and informs the user if anything goes wrong.
 fn parse_purchase_pass_arguments(args: &Vec<&str>, player: &PlayerMeta, north_bound: usize, south_bound: usize) -> Result<(usize, u32), ()> {
     // Make sure enough arguments were specified.
     if args.len() < 1 {
@@ -503,6 +552,8 @@ fn parse_purchase_pass_arguments(args: &Vec<&str>, player: &PlayerMeta, north_bo
     return Ok((travel_to, num_uses))
 }
 
+/// The actual process responsible for handling the transaction
+/// of purchasing a new travel pass.
 fn handle_purchase_pass(player: &PlayerMeta, town_num: usize, travel_to: usize, num_uses: u32) {
     player.entity(|entity| {
         // Calculate a price for this pass.
@@ -533,6 +584,8 @@ fn handle_purchase_pass(player: &PlayerMeta, town_num: usize, travel_to: usize, 
     });
 }
 
+/// Lets the user confirm whether they would like to like
+/// to purchase the aforementioned pass.
 fn confirm_purchase_pass(player: &PlayerMeta, price: u32, travel_to: usize, num_uses: u32) {
     let text = format!("Thanks! That's gonna be {}g.", price);
 
@@ -563,6 +616,8 @@ fn confirm_purchase_pass(player: &PlayerMeta, price: u32, travel_to: usize, num_
     player.send_blocking_message(&text, TEXT_SPEED);
 }
 
+/// Verifies that the item is a passbook and, if so,
+/// verifies that it can be used before using it.
 fn test_use_pass(passbook: &Item, town_num: usize) -> Option<bool> {
     if let Some(ref pass) = Any::downcast_ref::<PassBook>(passbook.as_any()) {
         if pass.has_pass(town_num) {
@@ -573,6 +628,8 @@ fn test_use_pass(passbook: &Item, town_num: usize) -> Option<bool> {
     None
 }
 
+/// Verifies that the item is a passbook and, if so,
+/// adds a new pass to it.
 fn test_add_item(passbook: &Item, travel_to: usize, num_uses: u32) -> Option<bool> {
     if let Some(ref pass) = Any::downcast_ref::<PassBook>(passbook.as_any()) {
         pass.add_pass(travel_to, num_uses);
@@ -581,6 +638,9 @@ fn test_add_item(passbook: &Item, travel_to: usize, num_uses: u32) -> Option<boo
     None
 }
 
+/// Verifies that the item is a passbook and, if so,
+/// sends the player a new confirmation dialogue after
+/// ensuring that the booklet can hold more passes.
 fn test_confirm_purchase(passbook: &Item, player: &PlayerMeta, full_price: u32, travel_to: usize, num_uses: u32) -> Option<bool> {
     if let Some(ref pass) = Any::downcast_ref::<PassBook>(passbook.as_any()) {
         if pass.can_hold_more() {

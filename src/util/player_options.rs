@@ -15,20 +15,35 @@ use rand::random;
 use self::DialogueOption::*;
 use self::DialogueResult::*;
 
+/// An ID used for determining that the current
+/// dialogue can be used for any player. Different
+/// from having no user.
 pub const GLOBAL_USER: usize = 01001010100101010;
 
 lazy_static! {
+    /// Player dialogue is stored statically.
     pub static ref CURRENT_OPTIONS: Mutex<Vec<Arc<Dialogue>>> = Mutex::new(Vec::new());
 }
 
+/// A function used for registering new options,
+/// automatically wrapping them in reference
+/// counters.
 pub fn register_options(options: Dialogue) {
     _register_options(Arc::new(options));
 }
 
+/// A sub-function of `register_options()` which
+/// accepts the completed form of the dialogue,
+/// already wrapped in a reference counter.
 pub fn _register_options(options: Arc<Dialogue>) {
     CURRENT_OPTIONS.lock().push(options);
 }
 
+/// Deletes and attempts to unwrap the dialogue.
+/// It's worth noting that this will only succeed
+/// when there are no references currently in scope.
+/// This may impose clarity issues and might need
+/// to be adjusted, as a result.
 pub fn delete_options(option_id: usize) -> Option<Dialogue> {
     let mut registry = CURRENT_OPTIONS.lock();
     registry.iter()
@@ -127,23 +142,38 @@ pub fn temp_send_current_options(to_player: usize) {
     temp_send_message_to_player(to_player, Options, &options_text, 0);
 }
 
+/// A static function for refreshing the input player's
+/// current dialogue.
 pub fn temp_update_options(for_player: usize) {
     let options_text = get_options_text(for_player);
     temp_update_player_message(for_player, Options, &options_text);
 }
 
+/// A static function for retrieving dialogue for the
+/// player from their current area, which handles
+/// automatically refreshing that dialogue to their
+/// display.
 pub fn temp_get_send_area_options(player_id: usize) {
     access::player_meta(player_id).get_send_area_options();
 }
 
+/// A static function for replacing the input dialogue
+/// with new options for the specified player.
 pub fn temp_replace_send_options(player_id: usize, old_options: usize, new_options: Dialogue) {
     access::player_meta(player_id).replace_send_options(old_options, new_options);
 }
 
-pub fn temp_replace_no_send_options(player_id: usize, old_options: usize, new_options: Dialogue) {
+/// A variant of `temp_replace_send_options()` which
+/// does not automatically refresh the information
+/// to the player.
+pub fn temp_replace_options(player_id: usize, old_options: usize, new_options: Dialogue) {
     access::player_meta(player_id).replace_options(old_options, new_options);
 }
 
+/// The result of processing the current dialogue.
+/// Informs the game of whether to continue checking
+/// through additional dialogues or if arguments are
+/// missing.
 #[derive(Debug)]
 pub enum DialogueResult {
     Success,
@@ -152,10 +182,29 @@ pub enum DialogueResult {
     NoArgs,
 }
 
+/// An option for determining what to do after a
+/// dialogue has been processed.
 pub enum DialogueOption {
+    /// Generates the next dialogue from the player's
+    /// current area.
     FromArea,
+    /// Do nothing, ignoring whether further dialogue
+    /// should be generated or potentially handling it
+    /// internally.
     Ignore,
-    Delete, // Dialogue will be automatically resent; Don't double-do it.
+    /// Do nothing and delete the existing dialogue.
+    /// Used when players have multiple dialogues
+    /// prompting them for input. This will also
+    /// automatically handle resending the current
+    /// dialogue to the player. And thus any calls
+    /// to `PlayerMeta#send_message()` or another
+    /// such variant should be substituted with
+    /// `PlayerMeta#udpate_message()`.
+    Delete,
+    /// Generate the next dialogue from the input
+    /// function. Using `gen_dialogue` with a supplied
+    /// closure may produce a cleaner syntax in many
+    /// cases.
     Generate(Box<Fn(&PlayerMeta) -> Dialogue>),
 }
 
@@ -168,16 +217,43 @@ pub fn gen_dialogue<F>(run: F) -> DialogueOption
 }
 
 pub struct Dialogue {
+    /// The title to be displayed at the top of the dialogue.
     pub title: String,
+
+    /// The optional text to be sent to the player before
+    /// the actual dialogue / options are displayed.
     pub text: Option<String>,
+
+    /// An optional field used for displaying about the
+    /// current dialogue to the player. Displayed
+    /// immediately below the title.
     pub info: Option<String>,
+
+    /// A vector of type `Response`, used for displaying
+    /// automatically-numbered options to the user.
     pub responses: Vec<Response>,
+
+    /// A vector of type `Command`, used for displaying
+    /// named options with arguments to the user.
     pub commands: Vec<Command>,
+
+    /// An optional field of type `TextHandler`, used for
+    /// handling any possible input from the user. This
+    /// will be the last of each input type to be processed
+    /// and is guaranteed to run regardless of any other
+    /// circumstances.
     pub text_handler: Option<TextHandler>,
+
+    /// The unique identifier of the player associated with
+    /// this dialogue.
     pub player_id: usize,
+
+    /// This dialogue's unique identifier.
     pub id: usize,
 }
 
+/// The default implementation for Dialogue, used for
+/// reducing some of the boilerplate that comes with it.
 impl Default for Dialogue {
     fn default() -> Dialogue {
         Dialogue {
@@ -207,10 +283,16 @@ impl Default for Dialogue {
 /// As such, the way forward is not exactly clear and
 /// will have to be ignored unless this project becomes
 /// more serious.
+///
+/// If you're offended by these implementations, please
+/// help me by suggesting an alternative.
 unsafe impl Send for Dialogue {}
 unsafe impl Sync for Dialogue {}
 
 impl Dialogue {
+    /// A simple constructor for generating dialogue using
+    /// the input `title`, a message to display, and a
+    /// vector of type `Response` for the specified player.
     pub fn simple(title: String, text: String, responses: Vec<Response>, player_id: usize) -> Dialogue {
         Dialogue {
             title,
@@ -221,6 +303,9 @@ impl Dialogue {
         }
     }
 
+    /// A variant of `simple()` which does not contain a
+    /// message. Also features a vector of type `Command`,
+    /// and thus probably deserves to be renamed.
     pub fn no_message(title: &str, responses: Vec<Response>, commands: Vec<Command>, player_id: usize) -> Dialogue {
         Dialogue {
             title: String::from(title),
@@ -231,6 +316,11 @@ impl Dialogue {
         }
     }
 
+    /// Another variant of `simple()` which replaces the
+    /// vector of `Response`s with a text handler. In this
+    /// case, text is optional, which is a bit inconsistent,
+    /// but was specifically designed for internal use.
+    /// Probably needs to be updated for the sake of clarity.
     pub fn handle_text(title: String, text: Option<String>, text_handler: TextHandler, player_id: usize) -> Dialogue {
         Dialogue {
             title,
@@ -241,6 +331,8 @@ impl Dialogue {
         }
     }
 
+    /// Constructs a `Dialogue` from only a title and vector
+    /// of type `Command` for the specified player.
     pub fn commands(title: &str, commands: Vec<Command>, player_id: usize) -> Dialogue {
         Dialogue {
             title: String::from(title),
@@ -250,6 +342,8 @@ impl Dialogue {
         }
     }
 
+    /// Variant of `commands()` which couples the dialogue
+    /// with a message to the player.
     pub fn commands_with_text(title: &str, text: String, commands: Vec<Command>, player_id: usize) -> Dialogue {
         Dialogue {
             title: String::from(title),
@@ -260,6 +354,8 @@ impl Dialogue {
         }
     }
 
+    /// A dialogue used internally for blocking input from
+    /// the user by simply doing nothing.
     pub fn empty(player_id: usize) -> Dialogue {
         Dialogue {
             title: String::from("..."),
@@ -268,10 +364,14 @@ impl Dialogue {
         }
     }
 
+    /// Retrieves the appropriate constructor from the player's
+    /// current area.
     pub fn from_area(player: &PlayerMeta) -> Dialogue {
         player.area( |a| a.get_dialogue(player))
     }
 
+    /// A dialogue which features two events for handling `yes`
+    /// or `no` from the user.
     pub fn confirm_action<F1, F2>(player_id: usize,temporary: bool, on_yes: F1, on_no: F2) -> Dialogue
         where F1: Fn(&PlayerMeta) + 'static,
               F2: Fn(&PlayerMeta) + 'static
@@ -295,6 +395,8 @@ impl Dialogue {
         }
     }
 
+    /// Variant of `confirm_action()` which specifies how
+    /// the dialogue should be continued in either case.
     pub fn confirm_action_then<F1, F2, F3>(player_id: usize, on_yes: F1, then: F2, else_then: F3,) -> Dialogue
         where F1: Fn(&PlayerMeta) + 'static,
               F2: Fn(&PlayerMeta) -> Dialogue + 'static,
@@ -314,6 +416,7 @@ impl Dialogue {
         }
     }
 
+    /// The main function used for processing this dialogue.
     pub fn run(&self, args: &str, player: &PlayerMeta, first_response: usize) -> DialogueResult {
         let mut split = args.split_whitespace();
         let command = match split.next() {
@@ -351,9 +454,12 @@ impl Dialogue {
         NoneFound
     }
 
+    /// Formats each component of this dialogue into a clean
+    /// display, which will be sent to the user starting at
+    /// the response number indicated by `first_response`.
+    /// This will typically be `1`, except when used recursively.
     pub fn get_display(&self, first_response: usize) -> String {
         let mut ret = String::new();
-
         ret += &format!("### {} ###\n\n", self.title);
 
         if let Some(ref description) = self.info {
@@ -362,13 +468,12 @@ impl Dialogue {
         }
 
         let mut option_num = first_response;
-
         for option in &self.responses {
             ret += &option.get_display(option_num);
             option_num += 1;
         }
         if let Some(ref th) = self.text_handler {
-            ret += &format!("_: {}", th.text);
+            ret += &th.get_display();
         }
         if self.commands.len() > 0 {
             ret += "\n";
@@ -379,10 +484,9 @@ impl Dialogue {
         ret
     }
 
-    pub fn get_id(&self) -> usize {
-        self.id
-    }
-
+    /// Indicates that a dialogue with the identifier
+    /// `option_id` should be deleted after `delay_ms`
+    /// milliseconds have passed.
     pub fn delete_in(player_id: usize, option_id: usize, delay_ms: u64) -> DelayHandler {
         DelayedEvent::no_flags(delay_ms, move || {
             delete_options(option_id).and_then(|_| {
@@ -391,8 +495,14 @@ impl Dialogue {
         });
         DelayHandler::new(delay_ms)
     }
+
+    pub fn get_id(&self) -> usize {
+        self.id
+    }
 }
 
+/// A type of Dialogue option used for handling
+/// automatically-numbered responses.
 pub struct Response {
     pub text: String,
     pub execute: Option<Box<Fn(&PlayerMeta) + 'static>>,
@@ -400,6 +510,9 @@ pub struct Response {
 }
 
 impl Response {
+    /// A standard constructor which handles all fields
+    /// in `Response`. This may look nicer in some
+    /// contexts.
     pub fn new<F1, F2>(text: &str, run: F1, then: F2) -> Response
         where F1: Fn(&PlayerMeta) + 'static,
               F2: Fn(&PlayerMeta) -> Dialogue + 'static
@@ -411,12 +524,17 @@ impl Response {
         }
     }
 
+    /// A simple response which runs the specified
+    /// closure and refreshes the dialogue from the
+    /// player's current area.
     pub fn simple<F>(text: &str, run: F) -> Response
         where F: Fn(&PlayerMeta) + 'static
     {
         Self::_simple(String::from(text), run)
     }
 
+    /// Variant of `simple()` which accepts an owned
+    /// string instead of a slice.
     pub fn _simple<F>(text: String, run: F) -> Response
         where F: Fn(&PlayerMeta) + 'static
     {
@@ -427,12 +545,16 @@ impl Response {
         }
     }
 
+    /// Variant of `simple()` which does not refresh the
+    /// player's dialogue after running.
     pub fn action_only<F>(text: &str, run: F) -> Response
         where F: Fn(&PlayerMeta) + 'static
     {
         Self::_action_only(String::from(text), run)
     }
 
+    /// Variant of `action_only()` which accepts an owned
+    /// string instead of a slice.
     pub fn _action_only<F>(text: String, run: F) -> Response
         where F: Fn(&PlayerMeta) + 'static
     {
@@ -443,12 +565,16 @@ impl Response {
         }
     }
 
+    /// Variant of `simple` which will delete its owner
+    /// upon running.
     pub fn delete_dialogue<F>(text: &str, run: F) -> Response
         where F: Fn(&PlayerMeta) + 'static
     {
         Self::_delete_dialogue(String::from(text), run)
     }
 
+    /// Variant of `delete_dialogue()` which accepts an
+    /// owned string instead of a slice.
     pub fn _delete_dialogue<F>(text: String, run: F) -> Response
         where F: Fn(&PlayerMeta) + 'static
     {
@@ -459,10 +585,15 @@ impl Response {
         }
     }
 
+    /// Constructs a response that has no action and simply
+    /// refreshes the dialogue from the player's area upon
+    /// running.
     pub fn text_only(text: &str) -> Response {
         Self::_text_only(String::from(text))
     }
 
+    /// Variant of `text_only()` which accepts an owned
+    /// string instead of a slice.
     pub fn _text_only(text: String) -> Response {
         Response {
             text,
@@ -471,14 +602,16 @@ impl Response {
         }
     }
 
+    /// Constructs a response which has no action, but directs
+    ///  the dialogue to a new source using the input closure.
     pub fn goto_dialogue<F>(text: &str, next_dialogue: F) -> Response
         where F: Fn(&PlayerMeta) -> Dialogue + 'static
     {
         Self::_goto_dialogue(String::from(text), next_dialogue)
     }
 
-
-    // To-do: Better name needed.
+    /// Variant of `goto_dialogue()` which accepts an owned
+    /// string instead of a slice.
     pub fn _goto_dialogue<F>(text: String, next_dialogue: F) -> Response
         where F: Fn(&PlayerMeta) -> Dialogue + 'static
     {
@@ -489,10 +622,14 @@ impl Response {
         }
     }
 
+    /// Constructs a response that generates dialogue from
+    /// the input entity.
     pub fn get_entity_dialogue(text: &str, accessor: EntityAccessor) -> Response {
         Self::_get_entity_dialogue(String::from(text), accessor)
     }
 
+    /// Variant of `get_entity_dialogue()` which accepts an
+    /// owned string instead of a slice.
     pub fn _get_entity_dialogue(text: String, accessor: EntityAccessor) -> Response {
         Response {
             text,
@@ -513,10 +650,14 @@ impl Response {
         }
     }
 
+    /// Variant of `get_entity_dialogue()` which returns the
+    /// player to the dialogue at the specified `marker`.
     pub fn goto_entity_dialogue(text: &str, marker: u8, accessor: EntityAccessor) -> Response {
         Self::_goto_entity_dialogue(String::from(text), marker, accessor)
     }
 
+    /// Variant of `goto_entity_dialogue()` that accepts an
+    /// owned string instead of a slice.
     pub fn _goto_entity_dialogue(text: String, marker: u8, accessor: EntityAccessor) -> Response {
         Response {
             text,
@@ -537,6 +678,10 @@ impl Response {
         }
     }
 
+    /// The main method used for processing this response. Handles
+    /// its execution, sending any possible messages to the user
+    /// while blocking their input, and ultimately generating the
+    /// next dialogue that will follow.
     pub fn run(&self, player: &PlayerMeta, current_dialogue: &Dialogue) {
         if let Some(ref exe) = self.execute {
             (exe)(player);
@@ -567,6 +712,7 @@ impl Response {
         }
     }
 
+    /// Formats this response to be displayed to the user.
     pub fn get_display(&self, option_num: usize) -> String {
         if self.text.starts_with("§") {
             let text = text::auto_break(3, &self.text[2..]);
@@ -577,6 +723,8 @@ impl Response {
     }
 }
 
+/// Variant of `Response` which can be referred to by
+/// its name while also allowing argument parameters.
 pub struct Command {
     pub name: String,
     pub input_desc: String,
@@ -586,6 +734,8 @@ pub struct Command {
 }
 
 impl Command {
+    /// Constructs a new command while manually resolving its
+    /// fields. May look nicer in some contexts.
     pub fn new<F1, F2>(input: &str, desc: &str, output: &str, run: F1, next_dialogue: F2) -> Command
         where F1: Fn(&Vec<&str>, &PlayerMeta) + 'static,
               F2: Fn(&PlayerMeta) -> Dialogue + 'static
@@ -599,6 +749,10 @@ impl Command {
         }
     }
 
+    /// Constructs a simple command using only the name required
+    /// for calling it, a description of what it will do, and
+    /// its actual closure. Generates new dialogue from the
+    /// player's current area.
     pub fn simple<F>(input: &str, output: &str, run: F) -> Command
         where F: Fn(&Vec<&str>, &PlayerMeta) + 'static
     {
@@ -611,6 +765,8 @@ impl Command {
         }
     }
 
+    /// Variant of `simple()` which does not handle generating
+    /// new dialogue.
     pub fn action_only<F>(input: &str, output: &str, run: F) -> Command
         where F: Fn(&Vec<&str>, &PlayerMeta) + 'static
     {
@@ -623,6 +779,8 @@ impl Command {
         }
     }
 
+    /// Constructs a command that performs no action, refreshing
+    /// the dialogue from the player's current area when run.
     pub fn text_only(input: &str, desc: &str, output: &str) -> Command {
         Command {
             name: String::from(input),
@@ -633,18 +791,9 @@ impl Command {
         }
     }
 
-    pub fn delete_dialogue<F>(input: &str, desc: &str, output: &str, run: F) -> Command
-        where F: Fn(&Vec<&str>, &PlayerMeta) + 'static
-    {
-        Command {
-            name: String::from(input),
-            input_desc: String::from(desc),
-            output_desc: String::from(output),
-            run: Box::new(run),
-            next_dialogue: Delete,
-        }
-    }
-
+    /// Variant of `simple()` that manually specifies text to be
+    /// displayed for this command's input. Refreshes the
+    /// dialogue from the player's current area upon running.
     pub fn manual_desc<F>(input: &str, desc: &str, output: &str, run: F) -> Command
         where F: Fn(&Vec<&str>, &PlayerMeta) + 'static
     {
@@ -657,6 +806,8 @@ impl Command {
         }
     }
 
+    /// Variant of `manual_desc()` that does not automatically
+    /// refresh the dialogue.
     pub fn manual_desc_no_next<F>(input: &str, desc: &str, output: &str, run: F) -> Command
         where F: Fn(&Vec<&str>, &PlayerMeta) + 'static
     {
@@ -669,6 +820,23 @@ impl Command {
         }
     }
 
+    /// Variant of `manual_desc()` that deletes the current
+    /// dialogue instead of refreshing it.
+    pub fn delete_dialogue<F>(input: &str, desc: &str, output: &str, run: F) -> Command
+        where F: Fn(&Vec<&str>, &PlayerMeta) + 'static
+    {
+        Command {
+            name: String::from(input),
+            input_desc: String::from(desc),
+            output_desc: String::from(output),
+            run: Box::new(run),
+            next_dialogue: Delete,
+        }
+    }
+
+    /// Variant of `simple()` that generates a new dialogue
+    /// from the input closure instead of executing a
+    /// process for general purposes.
     pub fn goto_dialogue<F>(input: &str, output: &str, dialogue: F) -> Command
         where F: Fn(&PlayerMeta) -> Dialogue + 'static
     {
@@ -681,6 +849,10 @@ impl Command {
         }
     }
 
+    /// The main method used for processing this command. Handles
+    /// its execution, sending any possible messages to the user
+    /// while blocking their input, and ultimately generating the
+    /// next dialogue that will follow.
     pub fn run(&self, args: &Vec<&str>, player: &PlayerMeta, current_dialogue: &Dialogue) {
         (self.run)(args, player);
 
@@ -709,6 +881,7 @@ impl Command {
         }
     }
 
+    /// Formats this response to be displayed to the user.
     pub fn get_display(&self) -> String {
         let text = format!("| {} | -> {}\n", self.input_desc, self.output_desc);
         if self.output_desc.starts_with("§") {
@@ -719,6 +892,9 @@ impl Command {
     }
 }
 
+/// Variant of `Response` which does not have a qualifier
+/// and is guaranteed to consume all inputs after other
+/// options have failed.
 pub struct TextHandler {
     pub text: String,
     pub execute: Box<Fn(&PlayerMeta, &str) + 'static>,
@@ -726,6 +902,10 @@ pub struct TextHandler {
 }
 
 impl TextHandler {
+    /// The main method used for processing this option. Handles
+    /// its execution, sending any possible messages to the user
+    /// while blocking their input, and ultimately generating the
+    /// next dialogue that will follow.
     pub fn run(&self, player: &PlayerMeta, args: &str, current_dialogue: &Dialogue) {
         (self.execute)(player, args);
 
@@ -750,6 +930,16 @@ impl TextHandler {
             } else {
                 player.replace_send_options(current_dialogue.id, dialogue);
             }
+        }
+    }
+
+    /// Formats this option to be displayed to the user.
+    pub fn get_display(&self) -> String {
+        let text = format!("_: {}", self.text);
+        if self.text.starts_with("§") {
+            text::auto_break(3, &text)
+        } else {
+            text
         }
     }
 }
