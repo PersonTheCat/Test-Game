@@ -1,6 +1,6 @@
 use crate::traits::Item;
 
-#[derive(Clone, ItemTools)]
+#[derive(AtomicClone, ItemTools)]
 pub struct TownKey {
     pub id: usize,
 }

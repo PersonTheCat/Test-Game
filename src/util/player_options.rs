@@ -269,8 +269,7 @@ impl Dialogue {
     }
 
     pub fn from_area(player: &PlayerMeta) -> Dialogue {
-        access::area(player.get_coordinates(), |a| a._get_dialogue(player))
-            .expect("Area was somehow deleted.")
+        player.area( |a| a.get_dialogue(player))
     }
 
     pub fn confirm_action<F1, F2>(player_id: usize,temporary: bool, on_yes: F1, on_no: F2) -> Dialogue
@@ -500,13 +499,13 @@ impl Response {
             execute: None,
             next_dialogue: gen_dialogue(move |player| {
                 match access::entity(accessor, |e| {
-                    e._get_dialogue(player)
+                    e.get_dialogue(player)
                         .expect("Called get_entity_dialogue() for an entity that does not have dialogue.")
                 }) {
                     Some(d) => d,
                     None => access::area(accessor.coordinates, |a| {
                         player.add_short_message("They got bored and walked away.");
-                        a._get_dialogue(player)
+                        a.get_dialogue(player)
                     })
                     .expect("Player's current area somehow disappeared.")
                 }
@@ -524,13 +523,13 @@ impl Response {
             execute: None,
             next_dialogue: gen_dialogue(move |player| {
                 match access::entity(accessor, |e| {
-                    e._goto_dialogue(marker, player)
+                    e.goto_dialogue(marker, player)
                         .expect("Called goto_entity_dialogue() for an entity that does not have dialogue.")
                 }) {
                     Some(d) => d,
                     None => access::area(accessor.coordinates, |a| {
                         player.add_short_message("They got bored and walked away.");
-                        a._get_dialogue(player)
+                        a.get_dialogue(player)
                     })
                         .expect("Player's current area somehow disappeared.")
                 }

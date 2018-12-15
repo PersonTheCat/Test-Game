@@ -6,7 +6,7 @@ use crate::types::effects::Effect;
 use crate::util::access;
 use crate::util::player_options::Response;
 
-use std::cell::RefCell;
+use parking_lot::Mutex;
 
 #[derive(EntityHolder, AreaTools)]
 pub struct Altar {
@@ -14,9 +14,9 @@ pub struct Altar {
     entrance_message: String,
     pub area_title: String,
     pub area_num: usize,
-    entities: RefCell<Vec<Box<Entity>>>,
+    pub entities: Mutex<Vec<Box<Entity>>>,
     coordinates: (usize, usize, usize),
-    connections: RefCell<Vec<(usize, usize, usize)>>,
+    connections: Mutex<Vec<(usize, usize, usize)>>,
 }
 
 impl Altar {
@@ -30,8 +30,8 @@ impl Altar {
             area_title: String::from("Altar"),
             area_num,
             coordinates,
-            entities: RefCell::new(Vec::new()),
-            connections: RefCell::new(Vec::new()),
+            entities: Mutex::new(Vec::new()),
+            connections: Mutex::new(Vec::new()),
         })
     }
 

@@ -1,16 +1,16 @@
 use crate::traits::{Area, Entity};
 use crate::types::classes::Class;
 
-use std::cell::RefCell;
+use parking_lot::Mutex;
 
 #[derive(EntityHolder, AreaTools)]
 pub struct BossRoom {
     entrance_message: String,
-    pub area_title: String,
-    pub area_num: usize,
-    entities: RefCell<Vec<Box<Entity>>>,
+    area_title: String,
+    area_num: usize,
+    entities: Mutex<Vec<Box<Entity>>>,
     coordinates: (usize, usize, usize),
-    connections: RefCell<Vec<(usize, usize, usize)>>,
+    connections: Mutex<Vec<(usize, usize, usize)>>,
 }
 
 impl BossRoom {
@@ -22,8 +22,8 @@ impl BossRoom {
             area_title: String::from("Test Boss Area"),
             area_num,
             coordinates,
-            entities: RefCell::new(Vec::new()),
-            connections: RefCell::new(Vec::new()),
+            entities: Mutex::new(Vec::new()),
+            connections: Mutex::new(Vec::new()),
         })
     }
 }

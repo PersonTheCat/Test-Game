@@ -7,9 +7,9 @@ use crate::types::items::consumables::Consumable;
 use crate::types::items::shops::{BlacksmithShop, PersistentShop};
 use crate::util::player_options::{Dialogue, Response};
 
+use atomic::Ordering::*;
+use atomic::Atomic;
 use rand::random;
-
-use std::cell::Cell;
 
 const NORMAL_DIALOGUE: u8 = 0;
 const TRADES: u8 = 1;
@@ -21,10 +21,10 @@ pub struct NPC {
     title: Option<String>,
     introduction_text: Option<String>,
     description: String,
-    god: String,
+    god: &'static str,
     food_trades: Box<Shop>,
     special_trades: Box<Shop>,
-    coordinates: Cell<(usize, usize, usize)>,
+    coordinates: Atomic<(usize, usize, usize)>,
 }
 
 impl NPC {
@@ -40,12 +40,12 @@ impl NPC {
             title: None,
             introduction_text: None,
             description: info.1.to_string(),
-            god: text::rand_god(class).to_string(),
+            god: text::rand_god(class),
             food_trades: Box::new(PersistentShop::new(vec![Box::new(
                 Consumable::poisonous_potato(),
             )])),
             special_trades: Box::new(BlacksmithShop::new(coordinates.0)),
-            coordinates: Cell::new(coordinates),
+            coordinates: Atomic::new(coordinates),
         }
     }
 
@@ -58,10 +58,10 @@ impl NPC {
             title: None,
             introduction_text: Some(intro),
             description: info.1.to_string(),
-            god: text::rand_god(class).to_string(),
+            god: text::rand_god(class),
             food_trades: Box::new(PersistentShop::new(Vec::new())),
             special_trades: Box::new(BlacksmithShop::new(coordinates.0)),
-            coordinates: Cell::new(coordinates),
+            coordinates: Atomic::new(coordinates),
         }
     }
 
@@ -81,7 +81,7 @@ impl NPC {
 
         responses.push(self.normal_trades_response());
 
-        if player.get_god() == self.god {
+        if self.god == &player.get_god(){
             text = Some(text::generic_same_god_message(&self.god));
             responses.push(self.special_trades_response());
         } else if use_intro_title {
@@ -160,7 +160,7 @@ impl Entity for NPC {
         Some(ret)
     }
 
-    fn _get_dialogue(&self, player: &PlayerMeta) -> Option<Dialogue> {
+    fn get_dialogue(&self, player: &PlayerMeta) -> Option<Dialogue> {
         let marker = match player.get_dialogue_marker(self.id) {
             Some(num) => num as i16,
             None => -1,
@@ -169,11 +169,11 @@ impl Entity for NPC {
             player.add_entity_knowledge(self.id);
             Some(self.get_main_dialogue(player, true))
         } else {
-            self._goto_dialogue(marker as u8, player)
+            self.goto_dialogue(marker as u8, player)
         }
     }
 
-    fn _goto_dialogue(&self, marker: u8, player: &PlayerMeta) -> Option<Dialogue> {
+    fn goto_dialogue(&self, marker: u8, player: &PlayerMeta) -> Option<Dialogue> {
         match marker {
             NORMAL_DIALOGUE => Some(self.get_main_dialogue(player, false)),
             TRADES => Some(self.get_normal_trades(player)),
@@ -192,11 +192,11 @@ impl Entity for NPC {
     }
 
     fn set_coordinates(&self, coords: (usize, usize, usize)) {
-        self.coordinates.set(coords);
+        self.coordinates.store(coords, SeqCst);
     }
 
     fn get_coordinates(&self) -> (usize, usize, usize) {
-        self.coordinates.get()
+        self.coordinates.load(SeqCst)
     }
 
     fn get_type(&self) -> &str {
@@ -208,24 +208,18 @@ pub struct Shopkeeper {
     id: usize,
     name: String,
     title: String,
-    god: String,
+    god: &'static str,
     shop: Box<Shop>,
 }
 
 impl Shopkeeper {
-    /**
-     * Test constructor.
-     *
-     * In the future, there will only be one
-     * Shopkeeper struct that accepts
-     * different kinds of shops.
-     */
+    /// Test constructor.
     pub fn new() -> Shopkeeper {
         Shopkeeper {
             id: random(),
             name: String::from("Blacksmith Guy"),
             title: String::from("Ordinary Blacksmith"),
-            god: text::rand_babylonian_god().to_string(),
+            god: text::rand_babylonian_god(),
             shop: Box::new(BlacksmithShop::new(0)),
         }
     }

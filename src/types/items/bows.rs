@@ -1,23 +1,20 @@
 use crate::traits::{Item, Weapon};
 use crate::types::items::{self, display_info::ItemDisplayInfo};
 
-use std::cell::Cell;
+use atomic::Ordering::*;
+use atomic::Atomic;
 
-/**
- * There's only one of each item type.
- * Use multiple constructors, instead.
- */
-#[derive(Clone, ItemTools)]
+#[derive(AtomicClone, ItemTools)]
 pub struct Bow {
     pub id: usize,
     pub name: String,
     pub level: u32,
-    damage: Cell<u32>,
+    damage: Atomic<u32>,
     pub piercing: u32,
     pub speed: u32,
     pub price: u32,
-    num_repairs: Cell<u32>,
-    num_uses: Cell<u32>,
+    num_repairs: Atomic<u32>,
+    num_uses: Atomic<u32>,
     pub max_uses: u32,
 }
 
@@ -27,12 +24,12 @@ impl Bow {
             id: rand::random(),
             name: String::from("to-do"),
             level: 1,
-            damage: Cell::new(5),
+            damage: Atomic::new(5),
             piercing: 0,
             speed: 15,
             price: 500,
-            num_repairs: Cell::new(0),
-            num_uses: Cell::new(100),
+            num_repairs: Atomic::new(0),
+            num_uses: Atomic::new(100),
             max_uses: 100,
         })
     }
@@ -40,17 +37,16 @@ impl Bow {
 
 impl Weapon for Bow {
     fn set_damage(&self, val: u32) {
-        self.damage.set(val);
+        self.damage.store(val, SeqCst);
     }
 
     fn get_damage(&self) -> u32 {
-        self.damage.get()
+        self.damage.load(SeqCst)
     }
 
     fn get_repair_price(&self) -> u32 {
         let base = self.get_price() / 2;
-
-        base + ((base as f32 / 2.0).ceil() as u32 * self.num_repairs.get())
+        base + ((base as f32 / 2.0).ceil() as u32 * self.num_repairs.load(SeqCst))
     }
 }
 
@@ -92,11 +88,11 @@ impl Item for Bow {
     }
 
     fn set_num_uses(&self, val: u32) {
-        self.num_uses.set(val);
+        self.num_uses.store(val, SeqCst);
     }
 
     fn get_num_uses(&self) -> u32 {
-        self.num_uses.get()
+        self.num_uses.load(SeqCst)
     }
 
     fn get_display_info(&self, price_factor: f32) -> ItemDisplayInfo {
@@ -111,7 +107,7 @@ impl Item for Bow {
                 self.get_damage(),
                 self.speed,
                 self.piercing,
-                items::format_num_uses(self.num_uses.get(), self.max_uses),
+                items::format_num_uses(self.num_uses.load(SeqCst), self.max_uses),
                 self.get_adjusted_price(price_factor),
             )
         }

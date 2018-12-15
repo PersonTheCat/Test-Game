@@ -4,9 +4,8 @@ use crate::types::classes::Class;
 use crate::types::entities::npcs::{Shopkeeper, NPC};
 use crate::*;
 
-use std::cell::RefCell;
-
 use lazy_static::lazy_static;
+use parking_lot::Mutex;
 use regex::Regex;
 
 use rand::{thread_rng, Rng};
@@ -43,10 +42,10 @@ pub struct Pub {
     owner_title: String,
     area_title: String,
     area_num: usize,
-    entities: RefCell<Vec<Box<Entity>>>,
+    entities: Mutex<Vec<Box<Entity>>>,
     location_order: Vec<u8>,
     coordinates: (usize, usize, usize),
-    connections: RefCell<Vec<(usize, usize, usize)>>,
+    connections: Mutex<Vec<(usize, usize, usize)>>,
 }
 
 impl Pub {
@@ -70,9 +69,9 @@ impl Pub {
             area_title: String::from("Pub"),
             area_num,
             coordinates,
-            entities: RefCell::new(entities),
+            entities: Mutex::new(entities),
             location_order: random_pub_location_order(2),
-            connections: RefCell::new(Vec::new()),
+            connections: Mutex::new(Vec::new()),
         })
     }
 }
@@ -87,7 +86,7 @@ impl Area for Pub {
     }
 
     fn get_entrance_message(&self) -> Option<String> {
-        let entities = self.entities.borrow();
+        let entities = self.entities.lock();
         let mut index = 0;
         let mut text = String::from("§"); // Start in auto-break mode.
         text += *choose(&WALK_IN);

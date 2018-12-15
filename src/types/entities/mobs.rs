@@ -1,12 +1,13 @@
 use crate::traits::Entity;
-use rand::random;
-use std::cell::Cell;
 
+use atomic::Ordering::*;
+use atomic::Atomic;
+use rand::random;
 pub struct Mob {
     id: usize,
     name: String,
-    health: Cell<u32>,
-    base_damage: Cell<u32>,
+    health: Atomic<u32>,
+    base_damage: Atomic<u32>,
 }
 
 impl Mob {
@@ -14,8 +15,8 @@ impl Mob {
         Mob {
             id: random(),
             name: String::from("Ordinary Spider"),
-            health: Cell::new(5),
-            base_damage: Cell::new(5),
+            health: Atomic::new(5),
+            base_damage: Atomic::new(5),
         }
     }
 }
@@ -30,11 +31,11 @@ impl Entity for Mob {
     }
 
     fn set_health(&self, health: u32) {
-        self.health.set(health);
+        self.health.store(health, SeqCst);
     }
 
     fn get_health(&self) -> u32 {
-        self.health.get()
+        self.health.load(SeqCst)
     }
 
     fn kill_entity(&self) {}

@@ -7,18 +7,17 @@ use crate::types::entities::players::Player;
 use crate::util::access;
 use crate::util::player_options::Response;
 
-use std::cell::RefCell;
-
+use parking_lot::Mutex;
 use rand::random;
 
 #[derive(EntityHolder, AreaTools)]
 pub struct Fountain {
     entrance_message: String,
-    pub area_title: String,
-    pub area_num: usize,
-    entities: RefCell<Vec<Box<Entity>>>,
+    area_title: String,
+    area_num: usize,
+    entities: Mutex<Vec<Box<Entity>>>,
     coordinates: (usize, usize, usize),
-    connections: RefCell<Vec<(usize, usize, usize)>>,
+    connections: Mutex<Vec<(usize, usize, usize)>>,
 }
 
 impl Fountain {
@@ -28,8 +27,8 @@ impl Fountain {
             area_title: String::from("Fountain"),
             area_num,
             coordinates,
-            entities: RefCell::new(Vec::new()),
-            connections: RefCell::new(Vec::new()),
+            entities: Mutex::new(Vec::new()),
+            connections: Mutex::new(Vec::new()),
         })
     }
 }

@@ -1,15 +1,14 @@
 use crate::player_data::PlayerMeta;
 use crate::text;
-use crate::traits::{Area, Entity};
+use crate::traits::{Area, Entity, Item};
 use crate::types::classes::Class;
 use crate::types::items::pass_books::PassBook;
 use crate::util::access;
 use crate::util::player_options::{Command, Dialogue, Response};
 use crate::*;
 
-use std::cell::RefCell;
-
 use rand::{thread_rng, Rng};
+use parking_lot::Mutex;
 
 static ENTRANCE_TEXT: [&str; 5] = [
     "§Welcome to station #<station>. Our trains can make it \
@@ -100,11 +99,11 @@ const STARTING_PRICE: u32 = 600;
 
 #[derive(EntityHolder, AreaTools)]
 pub struct Station {
-    pub area_title: String,
-    pub area_num: usize,
-    entities: RefCell<Vec<Box<Entity>>>,
+    area_title: String,
+    area_num: usize,
+    entities: Mutex<Vec<Box<Entity>>>,
     coordinates: (usize, usize, usize),
-    connections: RefCell<Vec<(usize, usize, usize)>>,
+    connections: Mutex<Vec<(usize, usize, usize)>>,
     distance_south: usize,
     distance_north: usize,
 }
@@ -112,21 +111,17 @@ pub struct Station {
 impl Station {
     pub fn new(_class: Class, area_num: usize, coordinates: (usize, usize, usize)) -> Box<Area> {
         let town_num = coordinates.0;
-
+        // The distance for towns #1-3 is fixed.
         let (distance_south, distance_north) = match town_num {
             1 => (0, 9), // Town #1 - 10
             2 => (1, 5), // Town #1 - 7
             3 => (2, 2), // Town #1 - 5
-            _ =>
-            // Random; farther south than north
-            {
+            _ => {
+                // Random; farther south than north
                 let variance = (town_num / 3) + 1; // Variance increases every 3 towns.
                 let max_distance = thread_rng().gen_range(town_num - variance, town_num + variance);
-
-                (
-                    (max_distance as f32 * 0.6) as usize + 1,
-                    (max_distance as f32 * 0.5) as usize + 1,
-                )
+                ((max_distance as f32 * 0.6) as usize + 1,
+                 (max_distance as f32 * 0.5) as usize + 1)
             }
         };
 
@@ -134,8 +129,8 @@ impl Station {
             area_title: String::from("Travel Station"),
             area_num,
             coordinates,
-            entities: RefCell::new(Vec::new()),
-            connections: RefCell::new(Vec::new()),
+            entities: Mutex::new(Vec::new()),
+            connections: Mutex::new(Vec::new()),
             distance_south,
             distance_north,
         })
@@ -232,12 +227,10 @@ pub fn travel_pass_info(text: &'static str) -> Response {
 pub fn pass_purchase_info(town_num: usize, text: &'static str) -> Response {
     Response::action_only(text, move |player| {
         let info = choose(&PASS_PURCHASE_INFO_TEXT);
-
         let replacements = vec![
             ("<rate>", (get_travel_rate(town_num) as u64).to_string()),
             ("<booklet>", get_booklet_price(town_num).to_string()),
         ];
-
         let info = text::apply_replacements(info, &replacements);
 
         player.send_blocking_message(&info, TEXT_SPEED);
@@ -251,71 +244,15 @@ pub fn use_pass(player_id: usize, town_num: usize, south_dist: usize, north_dist
 }
 
 pub fn _use_pass(player_id: usize, town_num: usize, south_dist: usize, north_dist: usize, )-> Dialogue {
-    let mut responses = Vec::new();
-    let mut commands = Vec::new();
-
     let south_bound = town_num - south_dist;
     let north_bound = town_num + north_dist;
 
-    responses.push(Response::text_only("Walk away."));
-
-    commands.push(Command::manual_desc_no_next(
-        "goto", "goto #", "Go to town #.",
-        move |args, player| {
-            if args.len() < 1 {
-                player.send_short_message("Excuse me?");
-                return;
-            }
-            let town_num: usize = match args[0].parse() {
-                Ok(num) => num,
-                Err(_) => {
-                    player.send_short_message("I'm not sure exactly where you're trying to go.");
-                    return;
-                }
-            };
-            if town_num > north_bound || town_num < south_bound {
-                player.send_short_message(
-                    "Sorry, but we can't quite take you home from here.\n\
-                     You'll need to make a connection to get that far.",
-                );
-                return;
-            }
-
-            if !player_has_pass(player, town_num) {
-                player.send_short_message(
-                    "Looks like you don't actually have a pass\n\
-                     for this area. Maybe buy one or try again.",
-                );
-            }
-
-            let new_coords = access::town(town_num, |town| {
-                town.locate_area("station")
-                    .expect("Tried to travel to a town without a station.")
-            });
-
-            access::area(player.get_coordinates(), |current_area| {
-                access::area(new_coords, |new_area| {
-                    if let Err(_) = try_delete_options(player.get_player_id()) {
-                        player.send_short_message(
-                            "You should finish your current\n\
-                             dialogues before moving on.",
-                        );
-                        return;
-                    }
-
-                    current_area.transfer_to_area(player.get_player_id(), new_area);
-                    let next = new_area._get_dialogue(player);
-                    register_options(next);
-                    player.update_options();
-                    player.send_blocking_message(
-                        "∫0.3.∫0.3 .∫0.3 .∫0.3 .∫0.3 .",
-                        TEXT_SPEED,
-                    );
-                })
-            })
-            .expect("Player's current area could not be found.");
-        },
-    ));
+    let responses = vec![
+        Response::text_only("Walk away.")
+    ];
+    let commands = vec![
+        use_pass_command(north_bound, south_bound)
+    ];
 
     Dialogue {
         title: String::from("Use a Pass"),
@@ -327,27 +264,80 @@ pub fn _use_pass(player_id: usize, town_num: usize, south_dist: usize, north_dis
     }
 }
 
-fn player_has_pass(player: &PlayerMeta, town_num: usize) -> bool {
-    access::entity(player.get_accessor(), |entity| {
-        let inventory = entity
-            .get_inventory()
-            .expect("Player no longer has an inventory.");
+fn use_pass_command(north_bound: usize, south_bound: usize) -> Command {
+    Command::manual_desc_no_next(
+        "goto", "goto #", "Go to town #.",
+        move |args, player| {
+            parse_use_pass_arguments(args, player, north_bound, south_bound)
+                .ok()
+                .and_then(|new_coords| Some(handle_use_pass(player, new_coords)));
+        },
+    )
+}
 
-        let ret = inventory.for_each_item(|item| {
-            if let Some(ref pass) = Any::downcast_ref::<PassBook>(item.as_any()) {
-                if pass.has_pass(town_num) {
-                    pass.use_pass(town_num);
-                    return Some(true); // from for-each
-                }
-            }
-            None
-        });
-        match ret {
-            Some(_) => true,
-            None => false,
+fn parse_use_pass_arguments(args: &Vec<&str>, player: &PlayerMeta, north_bound: usize, south_bound: usize) -> Result<(usize, usize, usize), ()> {
+    // Ensure that there are enough arguments.
+    if args.len() < 1 {
+        player.send_short_message("Excuse me?");
+        return Err(());
+    }
+    // Ensure that the town number can be parsed correctly.
+    let town_num: usize = match args[0].parse() {
+        Ok(num) => num,
+        Err(_) => {
+            player.send_short_message("§I'm not sure exactly where you're trying to go.");
+            return Err(());
         }
+    };
+    // Ensure that the town number is within this station's bounds.
+    if town_num > north_bound || town_num < south_bound {
+        player.send_short_message(
+            "§Sorry, but we can't quite take you home from here. \
+             You'll need to make a connection to get that far."
+        );
+        return Err(());
+    }
+    // Ensure that the player has a valid pass.
+    if !player_has_pass(player, town_num) {
+        player.send_short_message(
+            "§Looks like you don't actually have a pass \
+             for this area. Maybe buy one or try again."
+        );
+        return Err(());
+    }
+    // Assume that the player's current dialogue is an
+    // area dialogue and delete it, if so.
+    if let Err(_) = try_delete_options(player.get_player_id()) {
+        player.send_short_message(
+            "§You should finish your current \
+             dialogues before moving on."
+        );
+        return Err(());
+    }
+
+    Ok(access::town(town_num).locate_area("station")
+        .expect("This town's station did not generate correctly."))
+}
+
+fn player_has_pass(player: &PlayerMeta, town_num: usize) -> bool {
+    player.entity(|e|{
+        e.get_inventory()
+            .expect("Player no longer has an inventory.")
+            .for_each_item(|item| test_use_pass(item, town_num))
+            .is_some()
     })
-    .expect("Unable to locate player entity.")
+}
+
+fn handle_use_pass(player: &PlayerMeta, new_coords: (usize, usize, usize)) {
+    access::area(player.get_coordinates(), |current_area| {
+        access::area(new_coords, |new_area| {
+            current_area.transfer_to_area(player.get_player_id(), new_area);
+            let next = new_area.get_dialogue(player);
+            register_options(next);
+            player.update_options();
+            player.send_blocking_message("∫0.3.∫0.3 .∫0.3 .∫0.3 .∫0.3 .", TEXT_SPEED);
+        })
+    });
 }
 
 pub fn purchase_booklet(player_id: usize, town_num: usize, text: &'static str) -> Response {
@@ -356,18 +346,24 @@ pub fn purchase_booklet(player_id: usize, town_num: usize, text: &'static str) -
 
 pub fn _purchase_booklet(player_id: usize, town_num: usize) -> Dialogue {
     let price = get_booklet_price(town_num);
+    let title = String::from("Confirm Purchase");
     let text = format!("Sure thing! That'll be {}g.", price);
+    let responses = vec![
+        purchase_booklet_walk_away(),
+        purchase_booklet_response(price)
+    ];
+    Dialogue::simple(title, text, responses, player_id)
+}
 
-    let mut responses = Vec::new();
+fn purchase_booklet_walk_away() -> Response {
+    Response::simple("Walk away.", |player| {
+        player.add_short_message("§No harm done. Just let me know if you need anything else.");
+    })
+}
 
-    responses.push(Response::simple("Walk away.", |player| {
-        player.add_short_message(
-            "No harm done. Just let me know if you\n\
-             need anything else.",
-        );
-    }));
-    responses.push(Response::simple("Purchase item.", move |player| {
-        access::entity(player.get_accessor(), |entity| {
+fn purchase_booklet_response(price: u32) -> Response {
+    Response::simple("Purchase item.", move |player| {
+        player.entity(|entity| {
             let inventory = entity
                 .get_inventory()
                 .expect("Player no longer has an inventory.");
@@ -377,24 +373,20 @@ pub fn _purchase_booklet(player_id: usize, town_num: usize) -> Dialogue {
             if inventory.can_add_item(&booklet) {
                 inventory.add_item(Box::new(booklet), Some(entity));
                 entity.take_money(price);
-
                 player.add_short_message("Thanks for your purchase!");
             } else {
                 player.add_short_message(
-                    "Looks like you don't have enough space\n\
-                     for that. Make some and come back later.",
+                    "§Looks like you don't have enough space \
+                     for that. Make some and come back later."
                 );
             }
         });
-    }));
-
-    let title = String::from("Confirm Purchase");
-    Dialogue::simple(title, text, responses, player_id)
+    })
 }
 
 pub fn confirm_purchase_booklet(player: &PlayerMeta, price: u32) {
     let on_yes = move |player: &PlayerMeta| {
-        access::entity(player.get_accessor(), |entity| {
+        player.entity(|entity| {
             let inventory = entity
                 .get_inventory()
                 .expect("Player no longer has an inventory.");
@@ -408,8 +400,8 @@ pub fn confirm_purchase_booklet(player: &PlayerMeta, price: u32) {
                 player.add_short_message("Thanks for your purchase!");
             } else {
                 player.add_short_message(
-                    "Looks like you don't have enough space\n\
-                     for that. Make some and come back later.",
+                    "§Looks like you don't have enough space \
+                     for that. Make some and come back later."
                 );
             }
         });
@@ -417,7 +409,7 @@ pub fn confirm_purchase_booklet(player: &PlayerMeta, price: u32) {
     let on_no = |player: &PlayerMeta| {
         player.add_short_message(
             "No harm done. Just let me know if you\n\
-             need anything else.",
+             need anything else."
         );
     };
 
@@ -437,100 +429,17 @@ pub fn _purchase_pass(player_id: usize, town_num: usize, south_dist: usize, nort
     let north_bound = town_num + north_dist;
     let rate = get_travel_rate(town_num);
 
-    let mut responses = Vec::new();
-    let mut commands = Vec::new();
-    let mut replacements = Vec::new();
-
-    replacements.push(("<south>", south_bound.to_string()));
-    replacements.push(("<north>", north_bound.to_string()));
-    replacements.push(("<rate>", (rate as u32).to_string()));
-
-    responses.push(Response::text_only("Walk away."));
-
-    commands.push(Command {
-        name: String::from("buy"),
-        input_desc: String::from("buy #x #y"),
-        output_desc: String::from("Buy a pass for town #x with #y uses."),
-        run: Box::new(move |args: &Vec<&str>, player: &PlayerMeta| {
-            if args.len() < 1 {
-                player.send_short_message("Excuse me?");
-                return;
-            }
-
-            let travel_to: usize = match args[0].parse() {
-                Ok(num) => num,
-                Err(_) => {
-                    player.send_short_message("You may need to speak up, there.");
-                    return;
-                }
-            };
-
-            if travel_to > north_bound || travel_to < south_bound {
-                player.send_short_message(
-                    "Sorry, but we can't quite take you home from here.\n\
-                     You'll need to make a connection to get that far.",
-                );
-                return;
-            }
-
-            let mut num_uses = 1;
-
-            if args.len() > 1 {
-                if let Ok(num) = args[1].parse::<u32>() {
-                    num_uses = num;
-                } else {
-                    player.send_short_message(
-                        "I'm not really sure how many uses\n\
-                         you're looking for.",
-                    );
-                    return;
-                }
-            }
-
-            player.entity(|entity| {
-                let travel_price = get_travel_price(town_num, travel_to);
-                let full_price = get_ticket_price(travel_price, num_uses);
-
-                if !entity.can_afford(full_price) {
-                    player.send_short_message("Sorry, there, but you can't afford that.");
-                    return;
-                }
-
-                let as_player = match entity.as_player() {
-                    Some(p) => p,
-                    None => {
-                        player.send_short_message("I smell hax.");
-                        return;
-                    }
-                };
-
-                let inventory = &as_player.main_inventory;
-
-                let found = inventory.for_each_item(|item| {
-                    match Any::downcast_ref::<PassBook>(item.as_any()) {
-                        Some(ref book) => {
-                            if book.can_hold_more() {
-                                confirm_purchase_pass(player, full_price, travel_to, num_uses);
-                                Some(true)
-                            } else {
-                                None
-                            }
-                        }
-                        None => None,
-                    }
-                });
-
-                if let None = found {
-                    player.send_short_message(
-                        "Looks like you don't have a place for that.\n\
-                         You might want to buy a new travel book.",
-                    );
-                    return;
-                }
-            });
-        }),
-        next_dialogue: Ignore,
-    });
+    let responses = vec![
+        Response::text_only("Walk away.")
+    ];
+    let commands = vec![
+        purchase_pass_command(town_num, north_bound, south_bound)
+    ];
+    let replacements = vec![
+        ("<south>", south_bound.to_string()),
+        ("<north>", north_bound.to_string()),
+        ("<rate>", (rate as u32).to_string())
+    ];
 
     Dialogue {
         title: String::from("Buy a Pass"),
@@ -542,55 +451,142 @@ pub fn _purchase_pass(player_id: usize, town_num: usize, south_dist: usize, nort
     }
 }
 
+fn purchase_pass_command(town_num: usize, north_bound: usize, south_bound: usize) -> Command {
+    Command {
+        name: String::from("buy"),
+        input_desc: String::from("buy #x #y"),
+        output_desc: String::from("Buy a pass for town #x with #y uses."),
+        run: Box::new(move |args: &Vec<&str>, player: &PlayerMeta| {
+            parse_purchase_pass_arguments(args, player, north_bound, south_bound)
+                .ok()
+                .and_then(|(travel_to, num_uses)| {
+                    Some(handle_purchase_pass(player, town_num, travel_to, num_uses))
+                });
+        }),
+        next_dialogue: Ignore,
+    }
+}
+
+fn parse_purchase_pass_arguments(args: &Vec<&str>, player: &PlayerMeta, north_bound: usize, south_bound: usize) -> Result<(usize, u32), ()> {
+    // Make sure enough arguments were specified.
+    if args.len() < 1 {
+        player.send_short_message("Excuse me?");
+        return Err(());
+    }
+    // Make sure the arguments can be parsed correctly.
+    let travel_to: usize = match args[0].parse() {
+        Ok(num) => num,
+        Err(_) => {
+            player.send_short_message("You may need to speak up, there.");
+            return Err(());
+        }
+    };
+    // Make sure the station is willing to travel this far.
+    if travel_to > north_bound || travel_to < south_bound {
+        player.send_short_message(
+            "§Sorry, but we can't quite take you home from here. \
+                     You'll need to make a connection to get that far."
+        );
+        return Err(());
+    }
+    // Determine the number of uses to purchase the pass with.
+    let num_uses: u32 = if args.len() > 1 {
+        if let Ok(num) = args[1].parse() {
+            num
+        } else { // Invalid argument at position 3
+            player.send_short_message("§I'm not really sure how many uses you're looking for.");
+            return Err(());
+        }
+    } else {
+        1
+    };
+    return Ok((travel_to, num_uses))
+}
+
+fn handle_purchase_pass(player: &PlayerMeta, town_num: usize, travel_to: usize, num_uses: u32) {
+    player.entity(|entity| {
+        // Calculate a price for this pass.
+        let travel_price = get_travel_price(town_num, travel_to);
+        let full_price = get_ticket_price(travel_price, num_uses);
+
+        // Ensure that the player has enough money.
+        if !entity.can_afford(full_price) {
+            player.send_short_message("Sorry, there, but you can't afford that.");
+            return;
+        }
+        // Verify that the player has a passbook with
+        // enough space.
+        let confirmation_sent = entity.as_player()
+            .unwrap() // Entity is known to be a player
+            .main_inventory
+            .for_each_item(|item|
+                test_confirm_purchase(item, player, full_price, travel_to, num_uses))
+            .is_some();
+        // They did not have a book with enough space.
+        if !confirmation_sent {
+            player.send_short_message(
+                "§Looks like you don't have a place for that. \
+                         You might want to buy a new travel book."
+            );
+            return;
+        }
+    });
+}
+
 fn confirm_purchase_pass(player: &PlayerMeta, price: u32, travel_to: usize, num_uses: u32) {
     let text = format!("Thanks! That's gonna be {}g.", price);
 
     let on_yes = move |player: &PlayerMeta| {
         player.entity(|entity| {
-            let inventory = entity
-                .get_inventory()
-                .expect("Player no longer has an inventory.");
+            let found = entity.get_inventory()
+                .expect("Player no longer has an inventory.")
+                .for_each_item(|item|
+                    test_add_item(item, travel_to, num_uses))
+                .is_some();
 
-            let found = inventory.for_each_item(|item| {
-                match Any::downcast_ref::<PassBook>(item.as_any()) {
-                    Some(ref book) => {
-                        if book.can_hold_more() {
-                            book.add_pass(travel_to, num_uses);
-                            Some(true)
-                        } else {
-                            None
-                        }
-                    }
-                    None => None,
-                }
-            });
-
-            if let Some(_) = found {
+            if found {
                 entity.take_money(price);
-
                 player.add_short_message(
-                    "Thanks for doing business with us!\n\
-                     You can use this whenever you like.",
+                    "§Thanks for doing business with us! \
+                     You can use this whenever you like."
                 );
             } else {
-                player.add_short_message(
-                    "Huh... That's odd. Looks like you no longer have a book.",
-                );
+                player.add_short_message("§Huh... That's odd. Looks like you no longer have a book.");
             }
         });
     };
     let on_no = |player: &PlayerMeta| {
-        player.add_short_message(
-            "That's too bad∫0.2.∫0.2.∫0.2.∫0.3 Let me know if you\n\
-             need anything else.",
-        );
+        player.add_short_message("That's too bad∫0.2.∫0.2.∫0.2.∫0.3 Let me know if you\nneed anything else.");
     };
-    register_options(Dialogue::confirm_action(
-        player.get_player_id(),
-        true,
-        on_yes,
-        on_no,
-    ));
+    register_options(Dialogue::confirm_action(player.get_player_id(), true, on_yes, on_no));
     player.update_options();
     player.send_blocking_message(&text, TEXT_SPEED);
+}
+
+fn test_use_pass(passbook: &Item, town_num: usize) -> Option<bool> {
+    if let Some(ref pass) = Any::downcast_ref::<PassBook>(passbook.as_any()) {
+        if pass.has_pass(town_num) {
+            pass.use_pass(town_num);
+            return Some(true);
+        }
+    }
+    None
+}
+
+fn test_add_item(passbook: &Item, travel_to: usize, num_uses: u32) -> Option<bool> {
+    if let Some(ref pass) = Any::downcast_ref::<PassBook>(passbook.as_any()) {
+        pass.add_pass(travel_to, num_uses);
+        return Some(true);
+    }
+    None
+}
+
+fn test_confirm_purchase(passbook: &Item, player: &PlayerMeta, full_price: u32, travel_to: usize, num_uses: u32) -> Option<bool> {
+    if let Some(ref pass) = Any::downcast_ref::<PassBook>(passbook.as_any()) {
+        if pass.can_hold_more() {
+            confirm_purchase_pass(player, full_price, travel_to, num_uses);
+            return Some(true);
+        }
+    }
+    None
 }

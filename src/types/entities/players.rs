@@ -6,23 +6,26 @@ use crate::traits::{Entity, Item};
 use crate::util::access;
 use crate::*;
 
-use std::cell::{Cell, RefCell};
+use atomic::Ordering::*;
+use atomic::Atomic;
+use parking_lot::Mutex;
+
 use std::sync::Arc;
 
 pub struct Player {
     name: String,
     metadata: Arc<PlayerMeta>,
-    health: Cell<u32>,
-    base_damage: Cell<u32>,
-    max_health: Cell<u32>,
-    health_bonus: Cell<u32>, //to-do: convert this into armor points.
-    attack_speed: Cell<i32>,
-    item_speed: Cell<i32>,
+    health: Atomic<u32>,
+    base_damage: Atomic<u32>,
+    max_health: Atomic<u32>,
+    health_bonus: Atomic<u32>, //to-do: convert this into armor points.
+    attack_speed: Atomic<i32>,
+    item_speed: Atomic<i32>,
     pub main_inventory: Inventory,
-    money: Cell<u32>,
+    money: Atomic<u32>,
     weapon_slot: Inventory,
     offhand_slot: Inventory,
-    current_effects: RefCell<Vec<Effect>>,
+    current_effects: Mutex<Vec<Effect>>,
 }
 
 impl Player {
@@ -38,17 +41,17 @@ impl Player {
         Player {
             name: meta.get_name(),
             metadata: meta,
-            health: Cell::new(20),
-            base_damage: Cell::new(5),
-            max_health: Cell::new(20),
-            health_bonus: Cell::new(0),
-            attack_speed: Cell::new(0),
-            item_speed: Cell::new(0),
+            health: Atomic::new(20),
+            base_damage: Atomic::new(5),
+            max_health: Atomic::new(20),
+            health_bonus: Atomic::new(0),
+            attack_speed: Atomic::new(0),
+            item_speed: Atomic::new(0),
             main_inventory: Inventory::new(15),
-            money: Cell::new(0),
+            money: Atomic::new(0),
             weapon_slot: Inventory::new(1),
             offhand_slot: Inventory::new(1),
-            current_effects: RefCell::new(Vec::new()),
+            current_effects: Mutex::new(Vec::new()),
         }
     }
 
@@ -62,18 +65,12 @@ impl Player {
 
     /// This is used to correct effect values so that removing
     /// the effect will properly restore the original levels.
-    pub fn update_effect<F>(&self, name: &str, callback: F) -> bool
-        where F: FnOnce(&mut Effect)
-    {
-        let mut effects = self.current_effects.borrow_mut();
-        let index = effects.iter().position(|e| e.name == name);
-        if let Some(num) = index {
-            if let Some(ref mut effect) = effects.get_mut(num) {
-                callback(effect);
-                return true;
-            }
-        }
-        false
+    pub fn update_effect<F: FnOnce(&mut Effect)>(&self, name: &str, callback: F) -> bool {
+        self.current_effects.lock()
+            .iter_mut()
+            .find(|e| e.name == name)
+            .and_then(|e| Some(callback(e)))
+            .is_some()
     }
 
     pub fn has_special_item(&self, typ: &str, _info: Option<&str>) -> bool {
@@ -98,27 +95,26 @@ impl Entity for Player {
     }
 
     fn set_max_health(&self, val: u32) {
-        self.max_health.set(val);
-        let new = self.max_health.get();
-
-        if new > Self::MAX_HEALTH {
-            self.max_health.set(Self::MAX_HEALTH);
-        } else if new < Self::MIN_HEALTH {
-            self.max_health.set(Self::MIN_HEALTH);
+        if val > Self::MAX_HEALTH {
+            self.max_health.store(Self::MAX_HEALTH, SeqCst);
+        } else if val < Self::MIN_HEALTH {
+            self.max_health.store(Self::MIN_HEALTH, SeqCst);
+        } else {
+            self.max_health.store(val, SeqCst);
         }
     }
 
     fn get_max_health(&self) -> u32 {
-        self.max_health.get()
+        self.max_health.load(SeqCst)
     }
 
     fn set_health(&self, health: u32) {
-        self.health.set(health);
+        self.health.store(health, SeqCst);
         self.update_health_bar();
     }
 
     fn get_health(&self) -> u32 {
-        self.health.get() + self.health_bonus.get()
+        self.health.load(SeqCst) + self.health_bonus.load(SeqCst)
     }
 
     fn update_health_bar(&self) {
@@ -126,46 +122,43 @@ impl Entity for Player {
     }
 
     fn set_base_damage(&self, val: u32) {
-        self.base_damage.set(val);
-        let new = self.base_damage.get();
-
-        if new < Self::MIN_DAMAGE {
-            self.base_damage.set(Self::MIN_DAMAGE);
+        if val < Self::MIN_DAMAGE {
+            self.base_damage.store(Self::MIN_DAMAGE, SeqCst);
+        } else {
+            self.base_damage.store(val, SeqCst);
         }
     }
 
     fn get_base_damage(&self) -> u32 {
-        self.base_damage.get()
+        self.base_damage.load(SeqCst)
     }
 
     fn set_attack_speed(&self, val: i32) {
-        self.attack_speed.set(val);
-        let new = self.attack_speed.get();
-
-        if new > Self::MAX_ATK_SPEED {
-            self.attack_speed.set(Self::MAX_ATK_SPEED);
-        } else if new < Self::MIN_ATK_SPEED {
-            self.attack_speed.set(Self::MIN_ATK_SPEED);
+        if val > Self::MAX_ATK_SPEED {
+            self.attack_speed.store(Self::MAX_ATK_SPEED, SeqCst);
+        } else if val < Self::MIN_ATK_SPEED {
+            self.attack_speed.store(Self::MIN_ATK_SPEED, SeqCst);
+        } else {
+            self.attack_speed.store(val, SeqCst);
         }
     }
 
     fn get_attack_speed(&self) -> i32 {
-        self.attack_speed.get()
+        self.attack_speed.load(SeqCst)
     }
 
     fn set_item_speed(&self, val: i32) {
-        self.item_speed.set(val);
-        let new = self.item_speed.get();
-
-        if new > Self::MAX_ITEM_SPEED {
-            self.item_speed.set(Self::MAX_ITEM_SPEED);
-        } else if new < Self::MIN_ITEM_SPEED {
-            self.item_speed.set(Self::MIN_ITEM_SPEED);
+        if val > Self::MAX_ITEM_SPEED {
+            self.item_speed.store(Self::MAX_ITEM_SPEED, SeqCst);
+        } else if val < Self::MIN_ITEM_SPEED {
+            self.item_speed.store(Self::MIN_ITEM_SPEED, SeqCst);
+        } else {
+            self.item_speed.store(val, SeqCst);
         }
     }
 
     fn get_item_speed(&self) -> i32 {
-        self.item_speed.get()
+        self.item_speed.load(SeqCst)
     }
 
     fn get_inventory(&self) -> Option<&Inventory> {
@@ -268,43 +261,42 @@ impl Entity for Player {
     }
 
     fn give_money(&self, amount: u32) {
-        let current = self.money.get();
-        self.money.set(current + amount);
+        let current = self.money.load(SeqCst);
+        self.money.store(current + amount, SeqCst);
         self.update_health_bar();
     }
 
     fn take_money(&self, amount: u32) {
-        let current = self.money.get();
-        self.money.set(current.checked_sub(amount).unwrap_or(0));
+        let current = self.money.load(SeqCst);
+        self.money.store(current.checked_sub(amount).unwrap_or(0), SeqCst);
         self.update_health_bar();
     }
 
     fn get_money(&self) -> u32 {
-        self.money.get()
+        self.money.load(SeqCst)
     }
 
     fn has_effect(&self, name: &str) -> bool {
-        self.current_effects.borrow()
+        self.current_effects.lock()
             .iter()
             .find(|e| e.name == name)
             .is_some()
     }
 
     fn give_effect(&self, effect: Effect) {
-        self.current_effects.borrow_mut().push(effect);
+        self.current_effects.lock().push(effect);
         self.update_health_bar();
     }
 
     fn apply_effect(&self, name: &str) {
-        self.current_effects.borrow()
+        self.current_effects.lock()
             .iter()
             .find(|e| e.name == name)
             .and_then(|e| Some(e.apply(self)));
     }
 
     fn remove_effect(&self, name: &str) {
-        let mut effects = self.current_effects.borrow_mut();
-
+        let mut effects = self.current_effects.lock();
         effects.iter()
             .position(|e| e.name == name)
             .and_then(|i| {
@@ -314,7 +306,7 @@ impl Entity for Player {
     }
 
     fn clear_effects(&self) {
-        self.current_effects.borrow_mut().clear();
+        self.current_effects.lock().clear();
     }
 
     fn kill_entity(&self) {

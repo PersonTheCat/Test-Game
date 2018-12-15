@@ -5,8 +5,7 @@ use crate::util::access;
 use crate::util::player_options::Response;
 use crate::*;
 
-use std::cell::RefCell;
-
+use parking_lot::Mutex;
 use rand::random;
 
 const MIN_AMOUNT_PER_TOWN: f32 = 22.15;
@@ -20,10 +19,10 @@ static NOT_ENOUGH_MONEY: [&str; 1] = ["no money dialogue"];
 
 #[derive(EntityHolder, AreaTools)]
 pub struct GamblingDen {
-    pub area_num: usize,
-    entities: RefCell<Vec<Box<Entity>>>,
+    area_num: usize,
+    entities: Mutex<Vec<Box<Entity>>>,
     coordinates: (usize, usize, usize),
-    connections: RefCell<Vec<(usize, usize, usize)>>,
+    connections: Mutex<Vec<(usize, usize, usize)>>,
 }
 
 impl GamblingDen {
@@ -31,8 +30,8 @@ impl GamblingDen {
         Box::new(GamblingDen {
             area_num,
             coordinates,
-            entities: RefCell::new(Vec::new()),
-            connections: RefCell::new(Vec::new()),
+            entities: Mutex::new(Vec::new()),
+            connections: Mutex::new(Vec::new()),
         })
     }
 }

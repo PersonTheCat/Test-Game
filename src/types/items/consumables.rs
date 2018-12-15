@@ -3,11 +3,12 @@ use crate::types::effects::Effect;
 use crate::types::items::display_info::ItemDisplayInfo;
 
 use std::any::Any;
-use std::cell::Cell;
 
+use atomic::Ordering::*;
+use atomic::Atomic;
 use rand::random;
 
-#[derive(Clone)]
+#[derive(AtomicClone)]
 pub struct Consumable {
     pub id: usize,
     pub name: String,
@@ -15,7 +16,7 @@ pub struct Consumable {
     pub effect: Effect,
     pub stack_size: u32,
     pub price: u32,
-    pub num_uses: Cell<u32>,
+    pub num_uses: Atomic<u32>,
 }
 
 impl Consumable {
@@ -30,7 +31,7 @@ impl Consumable {
             effect: Effect::generic_damage(5),
             stack_size: 4,
             price: 25,
-            num_uses: Cell::new(0),
+            num_uses: Atomic::new(0),
         }
     }
 }
@@ -56,12 +57,7 @@ impl Item for Consumable {
         "consumable"
     }
 
-    fn use_item(
-        &self,
-        user: Option<&Entity>,
-        use_on: Option<&Entity>,
-        _area: &Area,
-    ) -> Option<String> {
+    fn use_item(&self, user: Option<&Entity>, use_on: Option<&Entity>, _area: &Area) -> Option<String> {
         if let Some(entity) = use_on {
             self.effect.apply(entity);
             Some(format!(
@@ -78,11 +74,11 @@ impl Item for Consumable {
     }
 
     fn set_num_uses(&self, val: u32) {
-        self.num_uses.set(val);
+        self.num_uses.store(val, SeqCst);
     }
 
     fn get_num_uses(&self) -> u32 {
-        self.num_uses.get()
+        self.num_uses.load(SeqCst)
     }
 
     fn get_display_info(&self, price_factor: f32) -> ItemDisplayInfo {

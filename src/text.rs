@@ -232,9 +232,9 @@ const SAME_GOD: [&str; 5] = [
     "Ahh. Another acolyte of <god>, greatness be. Let us share in this blessing.",
 ];
 
-pub fn generic_same_god_message(god: &String) -> String {
+pub fn generic_same_god_message(god: &str) -> String {
     let text = *choose(&SAME_GOD);
-    let text = apply_replacements(text, &vec![("<god>", god.clone())]);
+    let text = apply_replacements(text, &vec![("<god>", god.to_string())]);
     format!("§{}: ", text)
 }
 
@@ -650,6 +650,6 @@ fn new_player_finished(player: &PlayerMeta) -> Dialogue {
 
         player.set_coordinates(area.get_coordinates());
         area.add_entity(entity);
-        area._get_dialogue(player)
+        area.get_dialogue(player)
     })
 }

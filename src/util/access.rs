@@ -26,17 +26,25 @@ pub struct EntityAccessor {
     pub is_player: bool,
 }
 
+/// Entities are not reference counted, and thus references
+/// to them cannot be extracted from areas. One way to
+/// ensure that these references are valid is to make sure
+/// that all pointers to them stay in scope. This is why
+/// callbacks are needed for this function; however, it's
+/// possible that this will change in the future.
 pub fn entity<T, F>(accessor: EntityAccessor, callback: F) -> Option<T>
     where F: FnOnce(&Entity) -> T
 {
     area(accessor.coordinates, |area| {
-        area.borrow_entities_ref().iter()
+        area.borrow_entity_lock().iter()
             .find(|e| e.get_id() == accessor.entity_id)
             .and_then(|e| Some(callback(&**e)))
     })
     .expect("Area no longer exists.")
 }
 
+/// Clones a reference to this player's information from
+/// the registry using their ID.
 pub fn player_meta(player_id: usize) -> Arc<PlayerMeta> {
     PLAYER_META.lock()
         .iter()
@@ -45,6 +53,9 @@ pub fn player_meta(player_id: usize) -> Arc<PlayerMeta> {
         .clone()
 }
 
+/// Retrieves information about the user associated with
+/// this channel information, i.e. Discord channel,
+/// local username, etc.
 pub fn player_meta_sender(channel: &ChannelInfo) -> Option<Arc<PlayerMeta>> {
     PLAYER_META.lock()
         .iter()
@@ -52,72 +63,75 @@ pub fn player_meta_sender(channel: &ChannelInfo) -> Option<Arc<PlayerMeta>> {
         .and_then(|p| Some(p.clone()))
 }
 
+/// Retrieves information related to the specified player's
+/// context, including their current town, area, and actual
+/// entity.
 pub fn context<T, F>(player: &PlayerMeta, callback: F) -> Option<T>
     where F: FnOnce(&Town, &Area, &Entity) -> T
 {
     let coordinates = player.get_coordinates();
+    let town = town(coordinates.0);
+    let area = match &town.get_areas()[coordinates.1][coordinates.2] {
+        Some(ref a) => a,
+        None => return None,
+    };
 
-    return town(coordinates.0, |town| {
-        let area = match &town.get_areas()[coordinates.1][coordinates.2] {
-            Some(ref a) => a,
-            None => return None,
-        };
+    let entities = area.borrow_entity_lock();
 
-        let entities = area.borrow_entities_ref();
+    let entity = entities
+        .iter()
+        .find(|e| e.get_id() == player.get_player_id())
+        .expect("Area no longer contains entity.");
 
-        let entity = entities
-            .iter()
-            .find(|e| e.get_id() == player.get_player_id())
-            .expect("Area no longer contains entity.");
-
-        Some(callback(town, &**area, &**entity))
-    });
+    Some(callback(&*town, &**area, &**entity))
 }
 
-pub fn town<F, T>(num: usize, callback: F) -> T
-    where F: FnOnce(&Town) -> T
-{
-    unsafe {
-        if let Some(ref mut registry) = towns::TOWN_REGISTRY {
-            match registry.get(&num) {
-                Some(ref town) => return callback(town),
-                None => {
-                    towns::Town::new(num); // Registered automatically.
-                    return town(num, callback); // Potential overflow errors; seems fairly safe.
-                }
-            }
-        } else {
-            panic!("Error: Town registry not setup in time.")
-        }
+/// Clones a reference to the specified town from the registry.
+/// Generates towns that do not exist. As such, there is no
+/// need to generate these manually.
+pub fn town(num: usize) -> Arc<Town> {
+    if let Some(t) = towns::TOWN_REGISTRY.read().get(&num) {
+        return t.clone();
     }
+    // Nothing was found. Drop the lock, generate, and try again.
+    Town::generate(num);
+    towns::TOWN_REGISTRY.read().get(&num).unwrap().clone()
 }
 
 pub fn area_exists(coords: (usize, usize, usize)) -> bool {
-    town(coords.0, |town| {
-        town.get_areas()[coords.1][coords.2].is_some()
-    })
+    match towns::TOWN_REGISTRY.read().get(&coords.0) {
+        Some(t) => (&t.get_areas()[coords.1][coords.2]).is_some(),
+        _ => false
+    }
 }
 
+/// Used for borrowing a reference to the area located
+/// at `coords`. See `entities()`.
 pub fn area<F, T>(coords: (usize, usize, usize), callback: F) -> Option<T>
     where F: FnOnce(&Area) -> T
 {
-    town(coords.0, |town| {
-        match &town.get_areas()[coords.1][coords.2] {
-            Some(a) => Some(callback(&**a)),
-            None => None,
-        }
-    })
+    // Need to make sure the data isn't moved.
+    // Difficult to do functionally.
+    match towns::TOWN_REGISTRY.read().get(&coords.0) {
+        Some(t) => match &t.get_areas()[coords.1][coords.2] {
+            Some(ref a) => Some(callback(&**a)),
+            None => None
+        },
+        None => None
+    }
 }
 
+/// Used for borrowing a reference to the starting area
+/// in the specified `town_num`. Panics if no starting
+/// area exists in the town, as this would be a bug and
+/// should thus be fixed.
 pub fn starting_area<F, T>(town_num: usize, callback: F) -> T
     where F: FnOnce(&Area) -> T
 {
-    town(town_num, |town| {
-        let (x, z) = towns::STARTING_COORDS;
-        if let Some(ref a) = &town.get_areas()[x][z] {
-            callback(&**a)
-        } else {
-            panic!("Error: Starting area not generated for town #{}.", town_num);
-        }
-    })
+    let (x, z) = towns::STARTING_COORDS;
+    let town = town(town_num);
+    if let Some(a) = &town.get_areas()[x][z] {
+        return callback(&**a);
+    }
+    panic!("Error: Starting area not generated for this town.");
 }

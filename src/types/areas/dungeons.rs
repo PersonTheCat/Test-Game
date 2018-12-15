@@ -1,7 +1,7 @@
 use crate::traits::{Area, Entity};
 use crate::types::classes::Class;
 
-use std::cell::RefCell;
+use parking_lot::Mutex;
 
 #[derive(EntityHolder, AreaTools)]
 pub struct Dungeon {
@@ -9,8 +9,8 @@ pub struct Dungeon {
     area_title: String,
     area_num: usize,
     coordinates: (usize, usize, usize),
-    entities: RefCell<Vec<Box<Entity>>>,
-    connections: RefCell<Vec<(usize, usize, usize)>>,
+    entities: Mutex<Vec<Box<Entity>>>,
+    connections: Mutex<Vec<(usize, usize, usize)>>,
 }
 
 impl Dungeon {
@@ -22,8 +22,8 @@ impl Dungeon {
             area_title: String::from("Test Dungeon"),
             area_num,
             coordinates,
-            entities: RefCell::new(Vec::new()),
-            connections: RefCell::new(Vec::new()),
+            entities: Mutex::new(Vec::new()),
+            connections: Mutex::new(Vec::new()),
         })
     }
 }

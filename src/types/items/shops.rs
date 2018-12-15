@@ -1,11 +1,9 @@
-use crate::item_settings;
+use crate::types::items::item_settings;
 use crate::traits::{Item, Shop};
 use crate::types::items::inventories::Inventory;
 
-/**
- * Persistent refers to the fact that
- * the same items are used on restock.
- */
+/// Persistent refers to the fact that
+/// the same items are used on restock.
 pub struct PersistentShop {
     pub inventory: Inventory,
     items: Vec<Box<Item>>,

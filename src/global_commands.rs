@@ -43,7 +43,7 @@ fn tp_player_to_town(player: &PlayerMeta, town_num: usize) -> Result<(), &'stati
 }
 
 fn tp_player_to_area(player: &PlayerMeta, location: &str) -> Result<(), &'static str> {
-    match player.town(|t| t.locate_area(location)){
+    match player.town().locate_area(location) {
         Some(coords) => tp_player(player, coords),
         None => return Err("Your town does not contain this kind of area.")
     }

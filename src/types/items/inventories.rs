@@ -5,16 +5,21 @@ use crate::util::access;
 use crate::util::player_options::{Command, Dialogue, Response};
 use crate::*;
 
+use parking_lot::RwLock;
+
 use std::boxed::Box;
-use std::cell::RefCell;
 
 pub struct ItemSlot {
-    stack: RefCell<Vec<Box<Item>>>,
+    stack: RwLock<Vec<Box<Item>>>,
     kind: &'static str,
     pub max_count: u32,
 }
 
 impl ItemSlot {
+    /// Constructs a raw ItemSlot used for storing items
+    /// in an inventory. Could be used independently from
+    /// `Inventory`, but this operation would require too
+    /// many features to be reimplemented to be worth it.
     pub fn new(item: Box<Item>) -> ItemSlot {
         let max_count = item.max_stack_size();
         let mut stack = Vec::with_capacity(max_count as usize);
@@ -23,22 +28,28 @@ impl ItemSlot {
         stack.push(item);
 
         ItemSlot {
-            stack: RefCell::new(stack),
+            stack: RwLock::new(stack),
             kind,
             max_count,
         }
     }
 
+    /// Reports the maximum number of items this slot
+    /// can hold, as originally determined by the item
+    /// used to construct it.
     pub fn get_max_count(&self) -> u32 {
         self.max_count
     }
 
+    /// Determines whether this slot is at capacity.
     pub fn can_hold_more(&self) -> bool {
-        let stack = self.stack.borrow();
-
+        let stack = self.stack.read();
         stack.len() < stack.capacity()
     }
 
+    /// Variant of `can_hold_more()` which determines
+    /// whether the slot can hold an item of the
+    /// specified type.
     pub fn can_add_item(&self, item: &Item) -> bool {
         if self.can_hold_more() {
             item.get_type() == self.kind
@@ -47,16 +58,21 @@ impl ItemSlot {
         }
     }
 
+    /// Reports the current number of items in the slot.
     pub fn current_size(&self) -> usize {
-        self.stack.borrow().len()
+        self.stack.read().len()
     }
 
+    /// Used for adding new items to the slot.
     pub fn add_item(&self, item: Box<Item>) {
-        self.stack.borrow_mut().push(item);
+        self.stack.write().push(item);
     }
 
+    /// Gets formatted information about the item and
+    /// couples it with its ID, used for more specific
+    /// referencing later on.
     pub fn get_display_info(&self, price_factor: f32) -> ItemDisplayInfo {
-        let items = self.stack.borrow();
+        let items = self.stack.read();
         let item = items.get(0)
             .expect("A slot existed, but there were no items in it.");
 
@@ -67,25 +83,22 @@ impl ItemSlot {
 }
 
 pub struct Inventory {
-    slots: RefCell<Vec<ItemSlot>>,
+    slots: RwLock<Vec<ItemSlot>>,
     pub max_size: usize,
 }
 
 impl Inventory {
     pub fn new(max_size: usize) -> Inventory {
         Inventory {
-            slots: RefCell::new(Vec::new()),
+            slots: RwLock::new(Vec::new()),
             max_size,
         }
     }
 
-    pub fn access<T, F>(&self, callback: F) -> T where F: Fn(&Vec<ItemSlot>) -> T {
-        let slots = self.slots.borrow();
-        callback(&*slots)
-    }
-
+    /// Performs an operation for each slot in the inventory.
+    /// Does not allow any return information.
     pub fn for_each_slot<F>(&self, callback: F) where F: Fn(usize, &ItemSlot) {
-        self.slots.borrow()
+        self.slots.read()
             .iter()
             .enumerate()
             .for_each(|(index, slot)| {
@@ -96,9 +109,9 @@ impl Inventory {
     // This is probably a little confusing.
     // Consider replacing it.
     pub fn for_each_item<T, F>(&self, mut callback: F) -> Option<T> where F: FnMut(&Item) -> Option<T> {
-        let slots = self.slots.borrow();
+        let slots = self.slots.read();
         for slot in slots.iter() {
-            let items = slot.stack.borrow();
+            let items = slot.stack.read();
             for item in items.iter() {
                 if let Some(response) = callback(&**item) {
                     return Some(response);
@@ -108,24 +121,31 @@ impl Inventory {
         None
     }
 
+    /// Reports the current number of slots that are occupied.
     pub fn current_size(&self) -> usize {
-        self.slots.borrow().len()
+        self.slots.read().len()
     }
 
+    /// Adds an additional slot to the inventory. Could be private,
+    /// but might also allow for some interesting item effects.
     pub fn add_slot(&self, slot: ItemSlot) {
-        self.slots.borrow_mut().push(slot);
+        self.slots.write().push(slot);
     }
 
+    /// Determines whether the inventory can hold any further items
+    /// of any kind.
     pub fn can_hold_more(&self) -> bool {
         self.current_size() < self.max_size
     }
 
+    /// Determines whether the inventory can hold the specified
+    /// item.
     pub fn can_add_item(&self, item: &Item) -> bool {
         if self.can_hold_more() {
             return true;
         }
 
-        for slot in self.slots.borrow_mut().iter() {
+        for slot in self.slots.read().iter() {
             if slot.can_add_item(item) {
                 return true;
             }
@@ -133,10 +153,12 @@ impl Inventory {
         false
     }
 
+    /// Adds an item to the inventory. Does not fail if no
+    /// space is available.
     pub fn add_item(&self, item: Box<Item>, entity: Option<&Entity>) {
         item.on_get(entity);
 
-        for slot in self.slots.borrow_mut().iter() {
+        for slot in self.slots.read().iter() {
             if slot.can_add_item(&*item) {
                 slot.add_item(item);
                 return;
@@ -145,17 +167,21 @@ impl Inventory {
         self.add_slot(ItemSlot::new(item));
     }
 
+    /// Returns an item from the specified `slot_num` and
+    /// reports the updated space in that slot.
     fn get_owned_item(&self, slot_num: usize) -> (Box<Item>, usize) {
-        let slots = self.slots.borrow();
+        let slots = self.slots.write();
         let slot = slots.get(slot_num).expect("Invalid slot #.");
 
-        let mut items = slot.stack.borrow_mut();
+        let mut items = slot.stack.write();
         let item = items.pop()
             .expect("Tried to pull an item from a slot which became empty.");
 
         (item, items.len())
     }
 
+    /// Takes an item based on its `id`. This ensures that the
+    /// correct item be removed from the inventory.
     pub fn take_item_id(&self, id: usize, from: Option<&Entity>) -> Option<Box<Item>> {
         match self.get_slot_num(id) {
             Some(slot_num) => Some(self.take_item(slot_num, from)),
@@ -163,9 +189,13 @@ impl Inventory {
         }
     }
 
+    /// Variant of `take_item_id()` which pulls an item from
+    /// the top of the specified `slot_num`. Uses `from` to
+    /// determine whether to apply or remove effects from the
+    /// specified entity.
     pub fn take_item(&self, slot_num: usize, from: Option<&Entity>) -> Box<Item> {
         let (item, slot_size) = self.get_owned_item(slot_num);
-        let mut slots = self.slots.borrow_mut();
+        let mut slots = self.slots.write();
 
         item.on_lose(from);
 
@@ -176,25 +206,34 @@ impl Inventory {
         item
     }
 
+    /// Allows temporary access into the inventory for retrieving
+    /// information about an item. Items are not reference counted,
+    /// and thus each of the four calls found in this function must
+    /// both be present and remain in scope while the reference can
+    /// be in use. Can return any information *except* for a reference
+    /// to the item.
     pub fn get_item_info<T, F>(&self, slot_num: usize, item_num: usize, callback: F) -> T
         where F: Fn(&Item) -> T
     {
-        let slots = self.slots.borrow();
+        let slots = self.slots.read();
         let slot = slots.get(slot_num).expect("Invalid slot #.");
 
-        let items = slot.stack.borrow();
+        let items = slot.stack.read();
         let item = items.get(item_num).expect("Invalid item #.");
 
         callback(&**item)
     }
 
+    /// Variant of `get_item_info()` which instead retrieves
+    /// information about the specified `slot_num`, ignoring
+    /// the particular items in that slot.
     pub fn get_slot_info<T, F>(&self, slot_num: usize, callback: F) -> T
         where F: Fn(&mut Vec<Box<Item>>) -> T
     {
-        let slots = self.slots.borrow();
+        let slots = self.slots.read();
         let slot = slots.get(slot_num).expect("Invalid slot #.");
 
-        let mut items = slot.stack.borrow_mut();
+        let mut items = slot.stack.write();
 
         callback(&mut items)
     }
@@ -202,18 +241,21 @@ impl Inventory {
     // Looks like this is unable to check beyond
     // the first item in any slot.
     pub fn get_slot_num(&self, id: usize) -> Option<usize> {
-        let slots = self.slots.borrow();
+        let slots = self.slots.read();
 
         slots.iter().position(|slot| {
-            let items = slot.stack.borrow();
-            let item = items
-                .get(0)
+            let items = slot.stack.read();
+            let item = items.get(0)
                 .expect("A slot existed, but there were no items in it.");
 
             item.get_id() == id
         })
     }
 
+    /// Used for handling events related to using the item
+    /// in this slot. Will ensure that num_uses is decremented
+    /// and that the updated information is refreshed for the
+    /// user.
     pub fn on_use_item(&self, slot_num: usize, user: Option<&Entity>, use_on: Option<&Entity>, area: &Area) {
         let (num_uses, response) = self.get_item_info(slot_num, 0, |item| {
             item.decrement_uses();
@@ -225,9 +267,9 @@ impl Inventory {
                 self.take_item(slot_num, user);
                 usr.update_health_bar();
             }
-            if let Some(ref _msg) = response {
-                if let Some(_player) = usr.as_player() {
-                    //                    send_short_message(player, msg);
+            if let Some(ref msg) = response {
+                if let Some(player) = usr.as_player() {
+                    player.send_short_message(msg);
                 }
             }
         }
@@ -248,16 +290,21 @@ impl Inventory {
         can_add
     }
 
+    /// Transfers the item with `id` to the specified inventory.
+    /// Uses `from` and `to` to apply effects to entities on
+    /// pickup / drop.
     pub fn transfer_id(&self, id: usize, other: &Inventory, from: Option<&Entity>, to: Option<&Entity>) -> bool {
         self.get_slot_num(id)
             .and_then(|num| Some(self.transfer(num, other, from, to)))
             .is_some()
     }
 
+    /// Gets the information used for displaying each item on
+    /// screen. Contains their IDs such that specific items--
+    /// and not just slot numbers--can be referenced later on.
     pub fn get_display_info(&self, price_factor: f32) -> Vec<ItemDisplayInfo> {
         let mut info = Vec::new();
-
-        let slots = self.slots.borrow();
+        let slots = self.slots.read();
 
         for slot in slots.iter() {
             info.push(slot.get_display_info(price_factor));
@@ -266,6 +313,8 @@ impl Inventory {
         info
     }
 
+    /// Converts the display info from `get_display_info()` into
+    /// something a little bit more appealing.
     pub fn format_display_info(info: &Vec<ItemDisplayInfo>) -> String {
         let mut ret = String::new();
         let mut index = 0;
@@ -280,11 +329,9 @@ impl Inventory {
         ret
     }
 
-    pub fn get_dialogue(&self, player_id: usize) -> Dialogue {
-        self._get_dialogue(&*access::player_meta(player_id))
-    }
-
-    pub fn _get_dialogue(&self, player: &PlayerMeta) -> Dialogue {
+    /// Generates the dialogue used for interacting with the
+    /// inventory's contents.
+    pub fn get_dialogue(&self, player: &PlayerMeta) -> Dialogue {
         let info = self.get_display_info(1.0);
         let mut responses = Vec::new();
         let mut commands = Vec::new();
@@ -340,7 +387,6 @@ impl Inventory {
                     }
                     entity.equip_item(slot_num);
                 })
-                    .expect("Player data no longer exists.");
             }),
             next_dialogue: Self::get_next_dialogue()
         }
@@ -386,9 +432,8 @@ impl Inventory {
             player.entity(|entity: &Entity| {
                 entity.get_inventory()
                     .expect("Player not longer has an inventory")
-                    ._get_dialogue(player)
+                    .get_dialogue(player)
             })
-            .expect("Entity no longer exists.")
         }))
     }
 }

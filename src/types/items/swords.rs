@@ -2,33 +2,33 @@ use crate::traits::{Area, Entity, Item, Weapon};
 use crate::types::effects::{Effect, EffectType::*};
 use crate::types::items::{self, display_info::ItemDisplayInfo};
 
-use std::cell::{Cell, RefCell};
+use parking_lot::Mutex;
+use atomic::Ordering::*;
+use atomic::Atomic;
 
 use rand::{random, thread_rng, Rng};
 
-/**
- * The only way to ensure that hold_effect always stays
- * accurate is to let entities use attribute modifiers
- * instead of directly manipulating their stats.
- * That would require a bit too much effort to change
- * for this project.
- */
+// The only way to ensure that hold_effect always stays
+// accurate is to let entities use attribute modifiers
+// instead of directly manipulating their stats.
+// That would require a bit too much effort to change
+// for this project.
 
-#[derive(Clone, ItemTools)]
+#[derive(AtomicClone, ItemTools)]
 pub struct Sword {
     pub id: usize,
     pub name: String,
     pub level: u32,
-    damage: Cell<u32>,
-    sharpness: Cell<i32>,
+    damage: Atomic<u32>,
+    sharpness: Atomic<i32>,
     pub max_sharpness: i32,
     pub speed: u32,
     pub price: u32,
-    num_repairs: Cell<u32>,
-    num_uses: Cell<u32>,
+    num_repairs: Atomic<u32>,
+    num_uses: Atomic<u32>,
     pub max_uses: u32,
-    pub hold_effect: RefCell<Option<Effect>>,
-    pub use_effect: RefCell<Option<Effect>>,
+    pub hold_effect: Mutex<Option<Effect>>,
+    pub use_effect: Mutex<Option<Effect>>,
 }
 
 const DAMAGE_PER_LEVEL: f32 = 4.5;
@@ -42,10 +42,8 @@ const MIN_SPEED: u32 = 2_000;
 const DULL_CHANCE: f32 = 0.15;
 
 impl Sword {
-    /**
-     * +1 level per 2 * town_num
-     * +1 variability per 3 * town_num
-     */
+    /// +1 level per 2 * town_num
+    /// +1 variability per 3 * town_num
     pub fn new(town_num: usize) -> Box<Item> {
         let base_level = (town_num / 2) + 1; // Start at level = 1
         let variability = town_num / 3; // Start at variability = 0;
@@ -63,38 +61,31 @@ impl Sword {
         let num_uses = calc_uses(level);
         let hold_effect = calc_hold_effect(level);
         let use_effect = calc_use_effect(level);
-        let price = calc_price(
-            damage,
-            sharpness,
-            use_effect.is_some(),
-            hold_effect.is_some(),
-            num_uses,
-            speed,
-        );
+        let price = calc_price(damage, sharpness,use_effect.is_some(),hold_effect.is_some(), num_uses, speed);
 
         Box::new(Sword {
             id: random(),
             name: String::from("to-do"),
             level,
-            damage: Cell::new(damage),
-            sharpness: Cell::new(sharpness),
+            damage: Atomic::new(damage),
+            sharpness: Atomic::new(sharpness),
             max_sharpness,
             speed,
             price,
-            num_repairs: Cell::new(0),
-            num_uses: Cell::new(num_uses),
+            num_repairs: Atomic::new(0),
+            num_uses: Atomic::new(num_uses),
             max_uses: num_uses,
-            hold_effect: RefCell::new(hold_effect),
-            use_effect: RefCell::new(use_effect),
+            hold_effect: Mutex::new(hold_effect),
+            use_effect: Mutex::new(use_effect),
         })
     }
 
     pub fn get_sharpness(&self) -> i32 {
-        self.sharpness.get()
+        self.sharpness.load(SeqCst)
     }
 
     pub fn set_sharpness(&self, val: i32) {
-        self.sharpness.set(val);
+        self.sharpness.store(val, SeqCst);
     }
 
     pub fn get_min_sharpness(&self) -> i32 {
@@ -126,14 +117,11 @@ fn calc_hold_effect(level: u32) -> Option<Effect> {
     }
 }
 
-/**
- * +100 per 2 * level
- * +20 variability per 3 * level
- */
+/// +100 per 2 * level
+/// +20 variability per 3 * level
 fn calc_uses(level: u32) -> u32 {
     let base_level = ((level / 2) + 1) * 50; // Start at level = 1
     let variability = (level / 3) * 10; // Start at variability = 0;
-
     thread_rng().gen_range(base_level - variability, base_level + variability + 1)
 }
 
@@ -145,16 +133,8 @@ fn calc_speed(level: u32) -> u32 {
     speed
 }
 
-fn calc_price(
-    damage: u32,
-    sharpness: i32,
-    has_use: bool,
-    has_hold: bool,
-    max_uses: u32,
-    speed: u32,
-) -> u32 {
+fn calc_price(damage: u32, sharpness: i32, has_use: bool, has_hold: bool, max_uses: u32, speed: u32)-> u32 {
     let mut price = 0;
-
     price += damage;
     price += sharpness as u32;
     if has_use {
@@ -165,23 +145,21 @@ fn calc_price(
     }
     price += max_uses;
     price += (BASE_SPEED.checked_sub(speed).unwrap_or(0)) / 100;
-
     price
 }
 
 impl Weapon for Sword {
     fn set_damage(&self, val: u32) {
-        self.damage.set(val);
+        self.damage.store(val, SeqCst);
     }
 
     fn get_damage(&self) -> u32 {
-        (self.damage.get() as i32 + self.get_sharpness()) as u32
+        (self.damage.load(SeqCst) as i32 + self.get_sharpness()) as u32
     }
 
     fn get_repair_price(&self) -> u32 {
         let base = self.get_price() / 2;
-
-        base + ((base as f32 / 2.0).ceil() as u32 * self.num_repairs.get())
+        base + ((base as f32 / 2.0).ceil() as u32 * self.num_repairs.load(SeqCst))
     }
 }
 
@@ -223,23 +201,16 @@ impl Item for Sword {
     }
 
     fn has_entity_effect(&self) -> bool {
-        self.hold_effect.borrow().is_some()
+        self.hold_effect.lock().is_some()
     }
 
-    /**
-     * To-do: Possibly allow weapons to apply
-     * effects to the user on use.
-     */
-    fn use_item(
-        &self,
-        _user: Option<&Entity>,
-        use_on: Option<&Entity>,
-        _area: &Area,
-    ) -> Option<String> {
+    // To-do: Possibly allow weapons to apply
+    // effects to the user on use.
+    fn use_item(&self, _user: Option<&Entity>, use_on: Option<&Entity>, _area: &Area) -> Option<String> {
         if let Some(entity) = use_on {
             entity.add_health(-1 * self.get_damage() as i32);
 
-            if let Some(ref effect) = *self.use_effect.borrow() {
+            if let Some(ref effect) = *self.use_effect.lock() {
                 effect.apply(entity);
             }
             None
@@ -249,22 +220,21 @@ impl Item for Sword {
     }
 
     fn on_equip(&self, entity: &Entity) {
-        if let Some(ref effect) = *self.hold_effect.borrow() {
+        if let Some(ref effect) = *self.hold_effect.lock() {
             effect.apply(entity);
         }
     }
 
     fn on_unequip(&self, entity: &Entity) {
-        let effect_cell = self.hold_effect.borrow();
+        let effect_cell = self.hold_effect.lock();
 
         let effect = match *effect_cell {
             Some(ref e) => e,
             None => return,
         };
 
-        if let Permanent = effect.effect_type
-        // See notes about accuracy.
-        {
+        if let Permanent = effect.effect_type {
+            // See notes about accuracy.
             effect.get_opposite_effect().apply(entity);
         }
     }
@@ -274,7 +244,7 @@ impl Item for Sword {
     }
 
     fn set_num_uses(&self, val: u32) {
-        self.num_uses.set(val);
+        self.num_uses.store(val, SeqCst);
     }
 
     fn decrement_uses(&self) {
@@ -288,27 +258,26 @@ impl Item for Sword {
     }
 
     fn get_num_uses(&self) -> u32 {
-        self.num_uses.get()
+        self.num_uses.load(SeqCst)
     }
 
     fn get_display_info(&self, price_factor: f32) -> ItemDisplayInfo {
-        let mut info = format!
-        (
+        let mut info = format!(
             "{}\n  * Type: lvl {} {}\n  * Dps: ({})\n  * Sharpness: ({} / {})\n  * Uses: ({})\n  * Price: {}g",
             self.name,
             self.level,
             self.get_type(),
             items::format_damage(self.get_damage(), self.speed),
-            self.sharpness.get(),
+            self.sharpness.load(SeqCst),
             self.max_sharpness,
-            items::format_num_uses(self.num_uses.get(), self.max_uses),
+            items::format_num_uses(self.num_uses.load(SeqCst), self.max_uses),
             self.get_adjusted_price(price_factor),
         );
 
-        if let Some(ref effect) = *self.hold_effect.borrow() {
+        if let Some(ref effect) = *self.hold_effect.lock() {
             info += &format!("\n  * When equipped: {}", effect.name);
         }
-        if let Some(ref effect) = *self.use_effect.borrow() {
+        if let Some(ref effect) = *self.use_effect.lock() {
             info += &format!("\n  * Attack effect: {}", effect.name);
         }
 

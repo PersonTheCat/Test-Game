@@ -4,14 +4,14 @@ use crate::types::classes::Class;
 use crate::util::access;
 use crate::util::player_options::Response;
 
-use std::cell::RefCell;
+use parking_lot::Mutex;
 
 #[derive(EntityHolder, AreaTools)]
 pub struct Gate {
     area_num: usize,
     coordinates: (usize, usize, usize),
-    entities: RefCell<Vec<Box<Entity>>>,
-    connections: RefCell<Vec<(usize, usize, usize)>>,
+    entities: Mutex<Vec<Box<Entity>>>,
+    connections: Mutex<Vec<(usize, usize, usize)>>,
 }
 
 impl Gate {
@@ -19,8 +19,8 @@ impl Gate {
         Box::new(Gate {
             area_num,
             coordinates,
-            entities: RefCell::new(Vec::new()),
-            connections: RefCell::new(Vec::new()),
+            entities: Mutex::new(Vec::new()),
+            connections: Mutex::new(Vec::new()),
         })
     }
 
@@ -66,7 +66,7 @@ impl Area for Gate {
     }
 
     fn get_title(&self) -> String {
-        if access::town(self.get_town_num(), |t| t.unlocked()) {
+        if access::town(self.get_town_num()).unlocked() {
             String::from("Gate")
         } else {
             String::from("Locked Gate")
@@ -85,7 +85,7 @@ impl Area for Gate {
                     access::area(current_area, |old_area| {
                         access::starting_area(next_town, |new_area| {
                             old_area.transfer_to_area(player.get_player_id(), new_area);
-                            new_area._get_dialogue(player)
+                            new_area.get_dialogue(player)
                         })
                     })
                     .expect("The player's current area could not be relocated.")
@@ -98,13 +98,12 @@ impl Area for Gate {
                 "Test going to the previous area",
                 move |player| {
                     access::area(current_area, |old_area| {
-                        access::town(previous_town, |town| {
-                            access::area(town.end_gate(), |new_area| {
-                                old_area.transfer_to_area(player.get_player_id(), new_area);
-                                new_area._get_dialogue(player)
-                            })
-                            .expect("Invalid town # or gate coordinates.")
+                        let town = access::town(previous_town);
+                        access::area(town.end_gate(), |new_area| {
+                            old_area.transfer_to_area(player.get_player_id(), new_area);
+                            new_area.get_dialogue(player)
                         })
+                        .expect("Invalid town # or gate coordinates.")
                     })
                     .expect("The player's current area could not be relocated.")
                 },

@@ -110,7 +110,7 @@ impl PlayerMeta {
     }
 
     pub fn get_send_area_options(&self) {
-        let new_options = access::area(self.get_coordinates(), |a| a._get_dialogue(self))
+        let new_options = access::area(self.get_coordinates(), |a| a.get_dialogue(self))
             .expect("Area was somehow deleted.");
         register_options(new_options);
         self.send_current_options();
@@ -165,18 +165,20 @@ impl PlayerMeta {
     /// Used for interacting with the entity that represents the
     /// player without actually removing it from its container
     /// or worrying about lifetime parameters.
-    pub fn entity<F, T>(&self, callback: F) -> Option<T> where F: FnOnce(&Entity) -> T {
+    pub fn entity<F, T>(&self, callback: F) -> T where F: FnOnce(&Entity) -> T {
         access::entity(self.get_accessor(), callback)
+            .expect("Error: The entity associated with this player could not be found.")
     }
 
     /// See `entity()`. These are shorthand methods.
-    pub fn area<F, T>(&self, callback: F) -> Option<T> where F: FnOnce(&Area) -> T {
+    pub fn area<F, T>(&self, callback: F) -> T where F: FnOnce(&Area) -> T {
         access::area(self.get_coordinates(), callback)
+            .expect("Error: The area associated with this player could not be found.")
     }
 
     /// See `entity()`. These are shorthand methods.
-    pub fn town<F, T>(&self, callback: F) -> T where F: FnOnce(&Town) -> T {
-        access::town(self.get_coordinates().0, callback)
+    pub fn town(&self) -> Arc<Town> {
+        access::town(self.get_coordinates().0)
     }
 
     /// Returns a cloned instance of the player's channel.
