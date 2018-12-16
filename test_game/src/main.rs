@@ -267,15 +267,21 @@ fn process_options(player: &PlayerMeta, input: &str) {
     // and allow it to be reused.
     let matches: Vec<Arc<Dialogue>> = CURRENT_OPTIONS.lock()
         .iter()
-        .filter(|o| o.player_id == player.get_player_id() || o.player_id == GLOBAL_USER)
+        .filter(|o| o.is_global() || o.player_id == player.get_player_id())
         .map(|o| o.clone())
         .collect();
+
+    // No dialogue found. Recreate and display it.
+    if matches.len() == 0 {
+        player.get_send_area_options();
+        return;
+    }
 
     let mut start_at = 1;
     for option in matches {
         match option.run(input, player, start_at) {
-            Success => return,
-            NoArgs => continue,
+            Success => break,
+            NoArgs => return,
             NoneFound => continue,
             InvalidNumber(max) => {
                 start_at += max;

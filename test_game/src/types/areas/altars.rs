@@ -65,7 +65,7 @@ impl Area for Altar {
 
     fn get_dialogue_info(&self, _player: &PlayerMeta) -> Option<String> {
         Some(format!(
-            "The inscription upon the altar reads:\n\
+            "§The inscription upon the altar reads:\n\
              \"    Hallowed {},\n{}\"",
             self.god(),
             self.god_desc()
@@ -77,7 +77,7 @@ impl Area for Altar {
 
         if num_uses != 0 {
             responses.push(Response::text_only(
-                "You have already prayed here (do nothing).",
+                "§You have already prayed here (do nothing).",
             ));
             return;
         }

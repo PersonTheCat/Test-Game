@@ -483,7 +483,13 @@ impl Dialogue {
         ret += &format!("### {} ###\n\n", self.title);
 
         if let Some(ref description) = self.info {
-            ret += &format!("> {}\n", description.replace("\n", "\n> "));
+            let formatted = if description.starts_with("§") {
+                let brk = text::auto_break(0, length, &description[2..]);
+                format!("> {}\n", brk.replace("\n", "\n> "))
+            } else {
+                format!("> {}\n", description.replace("\n", "\n> "))
+            };
+            ret += &formatted;
             ret += "\n";
         }
 
@@ -508,6 +514,10 @@ impl Dialogue {
     /// function for any user.
     pub fn is_global(&self) -> bool {
         self.player_id == GLOBAL_USER
+    }
+
+    pub fn is_primary(&self) -> bool {
+        self.is_primary
     }
 
     pub fn get_id(&self) -> usize {
@@ -884,13 +894,15 @@ fn post_run(player: &PlayerMeta, current_dialogue: &Dialogue, next: &DialogueOpt
         FromArea => {
             // Ensure that the current dialogue also originates
             // from the player's area. Prevents some duplicate
-            // dialogues from generating.
-//            if current_dialogue.is_primary {
+            // dialogues from generating. If the player does not
+            // have a primary dialogue, then there also will be
+            // no duplicates and thus no problems.
+            if current_dialogue.is_primary || !player.has_primary_dialogue() {
                 Some(Dialogue::from_area(player))
-//            } else {
-//                player.send_current_options(); // Refresh.
-//                None // To-do: log this information.
-//            }
+            } else {
+                player.send_current_options(); // Refresh.
+                None // To-do: log this information.
+            }
         },
         // The author indicated that the current dialogue
         // should cease to exist upon executing this function.

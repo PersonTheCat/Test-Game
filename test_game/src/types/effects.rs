@@ -661,9 +661,7 @@ impl Effect {
                 to_entity.remove_effect(potion_ref);
             }
             Temporary(duration) => {
-                println!("Applying temporary effect.");
                 generated();
-                println!("scheduling delayed event.");
                 DelayedEvent::new(
                     duration,
                     None,
@@ -934,9 +932,7 @@ fn standard_effect(effect: Effect, accessor: EntityAccessor) -> Box<'static + Fn
 /// that it can be removed correctly.
 fn updatable_effect(potion_ref: &'static str, accessor: EntityAccessor) -> Box<'static + Fn() -> bool + Send + Sync> {
     Box::new(move || {
-        println!("accessing entity.");
         match access::entity(accessor, |entity| {
-            println!("In");
             if let Some(ref player) = entity.as_player() {
                 player.update_effect(potion_ref, |effect| {
                     if effect.max_health != 0 {

@@ -272,31 +272,32 @@ fn get_direction(from: (usize, usize, usize), to: (usize, usize, usize)) -> Opti
 fn wave_response(entity: &Entity) -> Response {
     let receiver_id = entity.get_id();
     let text = format!("Wave to {}.", entity.get_name());
-    Response::_action_only(text, move |p| {
+    Response::_simple(text, move |p| {
         let msg = *choose(&[
             "<name> says hello!",
             "<name> says hi!",
-            "<name>, a fellow player, has called out\nto you.",
+            "§<name>, a fellow player, has called out to you.",
             "You have been contacted by <name>.",
-            "A strange creature known as \"<name>\"\nis shaking its hands at you.",
-            "You notice a bizarre machination which\ncalls itself \"<name>\" staring in your\ndirection.",
-            "You can't help but notice you're being\nwatched by <name>.",
-            "You stop and gaze upon the horror that\nis <name>.",
-            "Frightened, you turn around to get away\nfrom <name>.",
-            "You must be special. <name> has been\nwatching you."
+            "§A strange creature known as \"<name>\" is shaking its hands at you.",
+            "§You notice a bizarre machination which calls itself \"<name>\" staring in your direction.",
+            "§You can't help but notice you're being watched by <name>.",
+            "§You stop and gaze upon the horror that is <name>.",
+            "§Frightened, you turn around to get away from <name>.",
+            "§You must be special. <name> has been watching you."
         ]);
 
         let formatted = text::apply_replacements(msg, &[("<name>", p.get_name())]);
         temp_add_short_message(receiver_id, &formatted);
 
         if !try_refresh_options(receiver_id) {
-            p.send_short_message(*choose(&[
-                "They were too busy to notice you, but heard your message.",
+            p.add_short_message(*choose(&[
+                "§They were too busy to notice you, but heard your message.",
                 "They didn't see you there, but got your message.",
             ]), );
-        } else {
-            p.send_current_options();
-        } // Manually trigger refresh. There is a very strange bug associated.
+        }
+//        } else {
+//            p.send_current_options();
+//        } // Manually trigger refresh. There is a very strange bug associated.
     })
 }
 

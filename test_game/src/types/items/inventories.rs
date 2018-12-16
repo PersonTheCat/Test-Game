@@ -380,7 +380,7 @@ impl Inventory {
                         .get_inventory()
                         .expect("Player does not have an inventory.");
 
-                    if inventory.current_size() <= slot_num || slot_num == 0 {
+                    if inventory.current_size() < slot_num || slot_num == 0 {
                         player.add_short_message("Invalid item #.");
                         return;
                     }
@@ -413,7 +413,7 @@ impl Inventory {
                         .get_inventory()
                         .expect("Player no longer has an inventory.");
 
-                    if inventory.current_size() <= item_num {
+                    if inventory.current_size() < item_num || item_num == 0 {
                         player.add_short_message("Invalid item #.");
                         return;
                     }

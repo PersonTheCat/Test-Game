@@ -129,6 +129,13 @@ impl PlayerMeta {
         self.update_options();
     }
 
+    pub fn has_primary_dialogue(&self) -> bool {
+        CURRENT_OPTIONS.lock()
+            .iter()
+            .find(|o| o.is_primary && o.player_id == self.player_id)
+            .is_some()
+    }
+
     pub fn update_message(&self, typ: MessageComponent, msg: &str) {
         let mut reusable_message = self.reusable_message.lock();
         match typ {

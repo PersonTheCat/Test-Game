@@ -134,14 +134,17 @@ fn tuples_to_vec(tuples: &[(&str, &str)]) -> Vec<String> {
 ///                      # Gods
 /// //////////////////////////////////////////////////////
 
+// These are used in multiple locations. Leaving the
+// formatting marks out until later to avoid issues.
+
 pub const CELTIC_GODS: [(&str, &str); 6] =
 [
-    ("Danu", "§Matriarch of the Tuatha Dé Danann; caretaker of the Earth."),
-    ("Ogma", "§God of eloquence and learning, master of speech and language."),
-    ("Epona", "§Goddess of fertility, maternity, protector of horses, horse breeding, prosperity, dogs, healing springs, crops."),
-    ("Arwan", "§god of the underground; kingdom of the dead. Evoker of revenge, terror, and war."),
-    ("Scathach", "§Goddess of shadows and destruction, patroness of blacksmiths, healing, magic, prophecy, and martial arts."),
-    ("Merlin", "§The great sorcerer, druid, and magician; master of illusion, shape-shifting, healing, nature, and counseling.")
+    ("Danu", "Matriarch of the Tuatha Dé Danann; caretaker of the Earth."),
+    ("Ogma", "God of eloquence and learning, master of speech and language."),
+    ("Epona", "Goddess of fertility, maternity, protector of horses, horse breeding, prosperity, dogs, healing springs, crops."),
+    ("Arwan", "god of the underground; kingdom of the dead. Evoker of revenge, terror, and war."),
+    ("Scathach", "Goddess of shadows and destruction, patroness of blacksmiths, healing, magic, prophecy, and martial arts."),
+    ("Merlin", "The great sorcerer, druid, and magician; master of illusion, shape-shifting, healing, nature, and counseling.")
 ];
 
 pub const CELTIC_GODS_WHO_FLY: [&str; 4] = ["Latobius", "Taranis", "Brigid", "Nuada"];
@@ -151,7 +154,7 @@ pub const OTHER_GODS_WHO_FLY: [&str; 1] = ["Horagalles"];
 pub const HINDU_GODS: [(&str, &str); 6] =
 [
     ("Durga", "Goddess of victory; bane of evil."),
-    ("Kali", "§Goddess of time, creation, destruction, and power; mother of the universe and bestower of moksha."), // Mounts a fox.
+    ("Kali", "Goddess of time, creation, destruction, and power; mother of the universe and bestower of moksha."), // Mounts a fox.
     ("Ganesha", "Please provide text."), // Mounts a deer
     ("Vishnu", "I'm gonna need some text."),
     ("Surya", "How's about some text for this guy?"),
@@ -159,8 +162,8 @@ pub const HINDU_GODS: [(&str, &str); 6] =
 ];
 
 pub const BABYLONIAN_GODS: [(&str, &str); 2] = [
-    ("Ereshkigal", "§Queen of the underworld and lady of the great below."),
-    ("Gilgamesh", "§Someone please tell me something interesting about Gilgamesh."),
+    ("Ereshkigal", "Queen of the underworld and lady of the great below."),
+    ("Gilgamesh", "Someone please tell me something interesting about Gilgamesh."),
 ];
 
 /// There are a lot of redundant functions here.
@@ -633,7 +636,7 @@ fn new_player_ready(player: &PlayerMeta) -> Dialogue {
 
     Dialogue {
         title: String::from("New Player"),
-        text: Some(String::from(info)),
+        text: Some(format!("§{}", info)),
         responses,
         player_id: player.get_player_id(),
         ..Dialogue::default()
