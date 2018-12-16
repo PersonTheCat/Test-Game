@@ -13,7 +13,7 @@ use self::AttemptedSale::*;
 
 use std::any::Any;
 
-use parking_lot::MutexGuard;
+use parking_lot::RwLockReadGuard;
 use lazy_static::lazy_static;
 use rand::random;
 
@@ -211,6 +211,7 @@ pub trait Area: EntityHolder + AreaTools {
             responses,
             commands,
             text_handler: None,
+            is_primary: true,
             player_id: player.get_player_id(),
             id: random(),
         }
@@ -374,7 +375,7 @@ pub trait EntityHolder {
     /// A (hopefully temporary) method which allows
     /// entities inside of the `entities` vector to
     /// be accessed by external processes.
-    fn borrow_entity_lock(&self) -> MutexGuard<Vec<Box<Entity>>>;
+    fn borrow_entity_lock(&self) -> RwLockReadGuard<Vec<Box<Entity>>>;
 
     /// A nicer-looking implementation of `transfer_
     /// entity`, which should look nicer in-use when
@@ -398,7 +399,7 @@ pub trait Entity: Send + Sync {
     /// This entity's unique identifier.
     fn get_id(&self) -> usize;
 
-    /// This area's in-game name.
+    /// This entity's in-game name.
     fn get_name(&self) -> &String;
 
     /// This entity's optional title, a subtext of their name.
@@ -930,16 +931,15 @@ pub trait Shop: Send + Sync {
         items.iter().for_each(|i| item_ids.push(i.item_id));
 
         commands.push(Command {
-            name: String::from("buy"),
-            input_desc: String::from("buy #"),
+            input: String::from("buy #"),
             output_desc: String::from("Buy item #."),
             run: self.process_buy(item_ids, price_factor),
             next_dialogue: Generate(self.refresh_dialogue(allow_sales, price_factor)),
         });
 
         if allow_sales {
-            commands.push(Command::manual_desc(
-                "sell", "sell #", "Sell item # from inventory.",
+            commands.push(Command::simple(
+                "sell #", "Sell item # from inventory.",
                 |_args, player| {
                     player.send_short_message("Let's just pretend you sold that. ;)");
                 },

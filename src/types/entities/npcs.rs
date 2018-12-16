@@ -28,9 +28,7 @@ pub struct NPC {
 }
 
 impl NPC {
-    /**
-     * Test constructor
-     */
+    /// Test constructor
     pub fn new(class: Class, coordinates: (usize, usize, usize)) -> NPC {
         let info = text::rand_npc_details();
 
@@ -49,6 +47,7 @@ impl NPC {
         }
     }
 
+    /// Test constructor
     pub fn with_intro(intro: String, class: Class, coordinates: (usize, usize, usize)) -> NPC {
         let info = text::rand_npc_details();
 
@@ -146,12 +145,12 @@ impl Entity for NPC {
     fn get_response_text(&self, player: &PlayerMeta) -> Option<String> {
         let ret = if player.has_entity_knowledge(self.id) {
             match self.title {
-                Some(ref t) => format!("Speak to {}: {}", self.get_name(), t),
-                None => format!("Speak to {}.", self.get_name()),
+                Some(ref t) => format!("§Speak to {}: {}", self.get_name(), t),
+                None => format!("§Speak to {}.", self.get_name()),
             }
         } else {
             format!(
-                "Speak to the {}. (debug: {})",
+                "§Speak to the {}. (debug: {})",
                 self.get_description().unwrap().clone(),
                 self.god
             )
@@ -217,7 +216,7 @@ impl Shopkeeper {
     pub fn new() -> Shopkeeper {
         Shopkeeper {
             id: random(),
-            name: String::from("Blacksmith Guy"),
+            name: text::rand_npc_name(),
             title: String::from("Ordinary Blacksmith"),
             god: text::rand_babylonian_god(),
             shop: Box::new(BlacksmithShop::new(0)),

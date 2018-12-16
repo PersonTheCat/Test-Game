@@ -1,6 +1,7 @@
 use crate::text;
 use crate::traits::{Area, Entity};
 
+use parking_lot::RwLock;
 use parking_lot::Mutex;
 
 #[derive(EntityHolder, AreaTools)]
@@ -8,7 +9,7 @@ pub struct Path {
     area_title: String,
     area_num: usize,
     coordinates: (usize, usize, usize),
-    entities: Mutex<Vec<Box<Entity>>>,
+    entities: RwLock<Vec<Box<Entity>>>,
     connections: Mutex<Vec<(usize, usize, usize)>>,
 }
 
@@ -18,7 +19,7 @@ impl Path {
             area_title: text::rand_path_name().to_string(),
             area_num,
             coordinates,
-            entities: Mutex::new(Vec::new()),
+            entities: RwLock::new(Vec::new()),
             connections: Mutex::new(Vec::new()),
         })
     }

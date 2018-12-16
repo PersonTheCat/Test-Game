@@ -85,12 +85,13 @@ pub fn get_player_for_options(option_id: usize) -> Option<usize> {
 /// Generates the formatted dialogue text for this player.
 pub fn get_options_text(for_player: usize) -> String {
     let mut options_text = String::new();
+    let length = access::player_meta(for_player).get_text_length();
     let mut first_response = 1;
     CURRENT_OPTIONS.lock()
         .iter()
         .filter(|o| o.player_id == for_player)
         .for_each(|o| {
-            options_text += &format!("\n{}", o.get_display(first_response));
+            options_text += &format!("\n{}", o.get_display(length, first_response));
             first_response += o.responses.len();
         });
     options_text
@@ -139,7 +140,7 @@ pub fn try_refresh_options(player_id: usize) -> bool {
 /// object is not currently in scope.
 pub fn temp_send_current_options(to_player: usize) {
     let options_text = get_options_text(to_player);
-    temp_send_message_to_player(to_player, Options, &options_text, 0);
+    temp_send_message_to_player(to_player, Options, &options_text);
 }
 
 /// A static function for refreshing the input player's
@@ -179,7 +180,7 @@ pub enum DialogueResult {
     Success,
     InvalidNumber(usize),
     NoneFound,
-    NoArgs,
+    NoArgs
 }
 
 /// An option for determining what to do after a
@@ -205,7 +206,7 @@ pub enum DialogueOption {
     /// function. Using `gen_dialogue` with a supplied
     /// closure may produce a cleaner syntax in many
     /// cases.
-    Generate(Box<Fn(&PlayerMeta) -> Dialogue>),
+    Generate(Box<Fn(&PlayerMeta) -> Dialogue>)
 }
 
 /// A shorthand function for creating `Generate()`
@@ -244,12 +245,17 @@ pub struct Dialogue {
     /// circumstances.
     pub text_handler: Option<TextHandler>,
 
+    /// Indicates whether this dialogue belongs to the
+    /// user's current area, and thus whether it is safe
+    /// to delete.
+    pub is_primary: bool,
+
     /// The unique identifier of the player associated with
     /// this dialogue.
     pub player_id: usize,
 
     /// This dialogue's unique identifier.
-    pub id: usize,
+    pub id: usize
 }
 
 /// The default implementation for Dialogue, used for
@@ -263,6 +269,7 @@ impl Default for Dialogue {
             responses: Vec::new(),
             commands: Vec::new(),
             text_handler: None,
+            is_primary: false,
             player_id: GLOBAL_USER,
             id: random()
         }
@@ -416,6 +423,19 @@ impl Dialogue {
         }
     }
 
+    /// Indicates that a dialogue with the identifier
+    /// `option_id` should be deleted after `delay_ms`
+    /// milliseconds have passed.
+    pub fn delete_in(player_id: usize, option_id: usize, delay_ms: u64) -> DelayHandler {
+        DelayedEvent::no_flags(delay_ms, move || {
+            delete_options(option_id).and_then(|_| {
+                Some(access::player_meta(player_id).send_current_options())
+            });
+        });
+        DelayHandler::new(delay_ms)
+    }
+
+
     /// The main function used for processing this dialogue.
     pub fn run(&self, args: &str, player: &PlayerMeta, first_response: usize) -> DialogueResult {
         let mut split = args.split_whitespace();
@@ -439,7 +459,7 @@ impl Dialogue {
 
         // Handle commands
         let cmd = self.commands.iter()
-            .find(|c| c.name == command);
+            .find(|c| c.matches_input(command));
         if let Some(c) = cmd {
             let args: Vec<&str> = Vec::from_iter(split);
             c.run(&args, player, &self);
@@ -458,7 +478,7 @@ impl Dialogue {
     /// display, which will be sent to the user starting at
     /// the response number indicated by `first_response`.
     /// This will typically be `1`, except when used recursively.
-    pub fn get_display(&self, first_response: usize) -> String {
+    pub fn get_display(&self, length: usize, first_response: usize) -> String {
         let mut ret = String::new();
         ret += &format!("### {} ###\n\n", self.title);
 
@@ -469,31 +489,25 @@ impl Dialogue {
 
         let mut option_num = first_response;
         for option in &self.responses {
-            ret += &option.get_display(option_num);
+            ret += &option.get_display(length, option_num);
             option_num += 1;
         }
         if let Some(ref th) = self.text_handler {
-            ret += &th.get_display();
+            ret += &th.get_display(length);
         }
         if self.commands.len() > 0 {
             ret += "\n";
         }
         for command in &self.commands {
-            ret += &command.get_display();
+            ret += &command.get_display(length);
         }
         ret
     }
 
-    /// Indicates that a dialogue with the identifier
-    /// `option_id` should be deleted after `delay_ms`
-    /// milliseconds have passed.
-    pub fn delete_in(player_id: usize, option_id: usize, delay_ms: u64) -> DelayHandler {
-        DelayedEvent::no_flags(delay_ms, move || {
-            delete_options(option_id).and_then(|_| {
-                Some(access::player_meta(player_id).send_current_options())
-            });
-        });
-        DelayHandler::new(delay_ms)
+    /// Reports whether this dialogue is intended to
+    /// function for any user.
+    pub fn is_global(&self) -> bool {
+        self.player_id == GLOBAL_USER
     }
 
     pub fn get_id(&self) -> usize {
@@ -686,36 +700,13 @@ impl Response {
         if let Some(ref exe) = self.execute {
             (exe)(player);
         }
-
-        let next_dialogue = match &self.next_dialogue {
-            Generate(ref d) => Some((d)(player)),
-            FromArea => Some(Dialogue::from_area(player)),
-            Delete => {
-                delete_options(current_dialogue.id);
-                player.send_current_options();
-                None
-            }
-            Ignore => None,
-        };
-
-        if let Some(dialogue) = next_dialogue {
-            let text = dialogue.text.clone();
-
-            if let Some(ref txt) = text {
-                delete_options(current_dialogue.id);
-                register_options(dialogue);
-                player.update_options();
-                player.send_blocking_message(txt, TEXT_SPEED);
-            } else {
-                player.replace_send_options(current_dialogue.id, dialogue);
-            }
-        }
+        post_run(player, current_dialogue, &self.next_dialogue);
     }
 
     /// Formats this response to be displayed to the user.
-    pub fn get_display(&self, option_num: usize) -> String {
+    pub fn get_display(&self, length: usize, option_num: usize) -> String {
         if self.text.starts_with("§") {
-            let text = text::auto_break(3, &self.text[2..]);
+            let text = text::auto_break(3, length,&self.text[2..]);
             format!("{}: {}\n", option_num, text)
         } else {
             format!("{}: {}\n", option_num, self.text)
@@ -725,9 +716,13 @@ impl Response {
 
 /// Variant of `Response` which can be referred to by
 /// its name while also allowing argument parameters.
+/// `input` specifies the description of input shown
+/// to the user, e.g. `money #`. The portion of the
+/// string that precedes the first space in this
+/// description is what will be matched to determine
+/// whether to process the command.
 pub struct Command {
-    pub name: String,
-    pub input_desc: String,
+    pub input: String,
     pub output_desc: String,
     pub run: Box<Fn(&Vec<&str>, &PlayerMeta) + 'static>,
     pub next_dialogue: DialogueOption,
@@ -736,13 +731,12 @@ pub struct Command {
 impl Command {
     /// Constructs a new command while manually resolving its
     /// fields. May look nicer in some contexts.
-    pub fn new<F1, F2>(input: &str, desc: &str, output: &str, run: F1, next_dialogue: F2) -> Command
+    pub fn new<F1, F2>(input: &str, output: &str, run: F1, next_dialogue: F2) -> Command
         where F1: Fn(&Vec<&str>, &PlayerMeta) + 'static,
               F2: Fn(&PlayerMeta) -> Dialogue + 'static
     {
         Command {
-            name: String::from(input),
-            input_desc: String::from(desc),
+            input: String::from(input),
             output_desc: String::from(output),
             run: Box::new(run),
             next_dialogue: Generate(Box::new(next_dialogue)),
@@ -757,8 +751,7 @@ impl Command {
         where F: Fn(&Vec<&str>, &PlayerMeta) + 'static
     {
         Command {
-            name: String::from(input),
-            input_desc: String::from(input),
+            input: String::from(input),
             output_desc: String::from(output),
             run: Box::new(run),
             next_dialogue: FromArea,
@@ -771,8 +764,7 @@ impl Command {
         where F: Fn(&Vec<&str>, &PlayerMeta) + 'static
     {
         Command {
-            name: String::from(input),
-            input_desc: String::from(input),
+            input: String::from(input),
             output_desc: String::from(output),
             run: Box::new(run),
             next_dialogue: Ignore,
@@ -781,53 +773,22 @@ impl Command {
 
     /// Constructs a command that performs no action, refreshing
     /// the dialogue from the player's current area when run.
-    pub fn text_only(input: &str, desc: &str, output: &str) -> Command {
+    pub fn text_only(input: &str, output: &str) -> Command {
         Command {
-            name: String::from(input),
-            input_desc: String::from(desc),
+            input: String::from(input),
             output_desc: String::from(output),
             run: Box::new(|_, _| {}),
             next_dialogue: FromArea,
         }
     }
 
-    /// Variant of `simple()` that manually specifies text to be
-    /// displayed for this command's input. Refreshes the
-    /// dialogue from the player's current area upon running.
-    pub fn manual_desc<F>(input: &str, desc: &str, output: &str, run: F) -> Command
-        where F: Fn(&Vec<&str>, &PlayerMeta) + 'static
-    {
-        Command {
-            name: String::from(input),
-            input_desc: String::from(desc),
-            output_desc: String::from(output),
-            run: Box::new(run),
-            next_dialogue: FromArea,
-        }
-    }
-
-    /// Variant of `manual_desc()` that does not automatically
-    /// refresh the dialogue.
-    pub fn manual_desc_no_next<F>(input: &str, desc: &str, output: &str, run: F) -> Command
-        where F: Fn(&Vec<&str>, &PlayerMeta) + 'static
-    {
-        Command {
-            name: String::from(input),
-            input_desc: String::from(desc),
-            output_desc: String::from(output),
-            run: Box::new(run),
-            next_dialogue: Ignore,
-        }
-    }
-
-    /// Variant of `manual_desc()` that deletes the current
+    /// Variant of `simple()` that deletes the current
     /// dialogue instead of refreshing it.
-    pub fn delete_dialogue<F>(input: &str, desc: &str, output: &str, run: F) -> Command
+    pub fn delete_dialogue<F>(input: &str, output: &str, run: F) -> Command
         where F: Fn(&Vec<&str>, &PlayerMeta) + 'static
     {
         Command {
-            name: String::from(input),
-            input_desc: String::from(desc),
+            input: String::from(input),
             output_desc: String::from(output),
             run: Box::new(run),
             next_dialogue: Delete,
@@ -841,8 +802,7 @@ impl Command {
         where F: Fn(&PlayerMeta) -> Dialogue + 'static
     {
         Command {
-            name: String::from(input),
-            input_desc: String::from(input),
+            input: String::from(input),
             output_desc: String::from(output),
             run: Box::new(|_, _| {}),
             next_dialogue: Generate(Box::new(dialogue)),
@@ -855,39 +815,27 @@ impl Command {
     /// next dialogue that will follow.
     pub fn run(&self, args: &Vec<&str>, player: &PlayerMeta, current_dialogue: &Dialogue) {
         (self.run)(args, player);
+        post_run(player, current_dialogue, &self.next_dialogue);
+    }
 
-        let next_dialogue = match &self.next_dialogue {
-            Generate(ref d) => Some((d)(player)),
-            FromArea => Some(Dialogue::from_area(player)),
-            Delete => {
-                delete_options(current_dialogue.id);
-                player.send_current_options();
-                None
-            }
-            Ignore => None,
-        };
-
-        if let Some(dialogue) = next_dialogue {
-            let text = dialogue.text.clone();
-
-            if let Some(ref txt) = text {
-                delete_options(current_dialogue.id);
-                register_options(dialogue);
-                player.update_options();
-                player.send_blocking_message(txt, TEXT_SPEED);
-            } else {
-                player.replace_send_options(current_dialogue.id, dialogue);
-            }
+    /// Determines whether the initial value inside of
+    /// `self.input` matches given string slice. Different
+    /// from using `self.input.starts_with()` in that it
+    /// requires the entire section to match.
+    pub fn matches_input(&self, input: &str) -> bool {
+        match self.input.find(" ") {
+            Some(index) => &self.input[0..index] == input,
+            None => &self.input == input
         }
     }
 
     /// Formats this response to be displayed to the user.
-    pub fn get_display(&self) -> String {
-        let text = format!("| {} | -> {}\n", self.input_desc, self.output_desc);
+    pub fn get_display(&self, length: usize) -> String {
         if self.output_desc.starts_with("§") {
-            text::auto_break(3, &text)
+            let text = format!("| {} | -> {}\n", self.input, &self.output_desc[2..]);
+            text::auto_break(3, length, &text)
         } else {
-            text
+            format!("| {} | -> {}\n", self.input, self.output_desc)
         }
     }
 }
@@ -908,38 +856,67 @@ impl TextHandler {
     /// next dialogue that will follow.
     pub fn run(&self, player: &PlayerMeta, args: &str, current_dialogue: &Dialogue) {
         (self.execute)(player, args);
-
-        let next_dialogue = match &self.next_dialogue {
-            Generate(ref d) => Some((d)(player)),
-            FromArea => Some(Dialogue::from_area(player)),
-            Delete => {
-                delete_options(current_dialogue.id);
-                player.send_current_options();
-                None
-            }
-            Ignore => None,
-        };
-        if let Some(dialogue) = next_dialogue {
-            let text = dialogue.text.clone();
-
-            if let Some(ref txt) = text {
-                delete_options(current_dialogue.id);
-                register_options(dialogue);
-                player.update_options();
-                player.send_blocking_message(txt, TEXT_SPEED);
-            } else {
-                player.replace_send_options(current_dialogue.id, dialogue);
-            }
-        }
+        post_run(player, current_dialogue, &self.next_dialogue);
     }
 
     /// Formats this option to be displayed to the user.
-    pub fn get_display(&self) -> String {
-        let text = format!("_: {}", self.text);
+    pub fn get_display(&self, length: usize) -> String {
         if self.text.starts_with("§") {
-            text::auto_break(3, &text)
+            let text = text::auto_break(3, length, &self.text[2..]);
+            format!("_: {}", text)
         } else {
-            text
+            format!("_: {}", self.text)
+        }
+    }
+}
+
+/// Handles sending any messages to the player, deleting
+/// old dialogues, and registering new dialogues.
+fn post_run(player: &PlayerMeta, current_dialogue: &Dialogue, next: &DialogueOption) {
+    // Determine whether next dialogue is intended.
+    let next_dialogue = match next {
+        // The author supplied a function for manually
+        // generating the dialogue to follow. Trust that
+        // this is the right choice.
+        Generate(ref d) => Some((d)(player)),
+        // The author has indicated that the following dialogue
+        // should come from the player's current area.
+        FromArea => {
+            // Ensure that the current dialogue also originates
+            // from the player's area. Prevents some duplicate
+            // dialogues from generating.
+            if current_dialogue.is_primary {
+                Some(Dialogue::from_area(player))
+            } else {
+                player.send_current_options(); // Refresh.
+                None // To-do: log this information.
+            }
+        },
+        // The author indicated that the current dialogue
+        // should cease to exist upon executing this function.
+        Delete => {
+            // Go ahead and remove the dialogue, as it can't
+            // be handled below. Continue.
+            delete_options(current_dialogue.id);
+            player.send_current_options();
+            None
+        },
+        // The author wishes to ignore any outcome that might
+        // follow.
+        Ignore => None,
+    };
+    if let Some(dialogue) = next_dialogue {
+        // Get any possible messages from the dialogue to follow.
+        let text = dialogue.text.clone();
+        if let Some(ref txt) = text {
+            // Send a blocking message and replace the current options.
+            delete_options(current_dialogue.id);
+            register_options(dialogue);
+            player.update_options();
+            player.send_blocking_message(txt);
+        } else {
+            // There is no message. Just replace and refresh.
+            player.replace_send_options(current_dialogue.id, dialogue);
         }
     }
 }

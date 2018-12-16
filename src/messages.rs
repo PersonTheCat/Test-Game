@@ -18,16 +18,16 @@ use std::io::{self, Write};
 
 use self::ChannelInfo::*;
 
-pub fn temp_send_message_to_player(id: usize, typ: MessageComponent, msg: &str, ms_speed: u64) -> DelayHandler {
-    access::player_meta(id).send_message(typ, msg, ms_speed)
+pub fn temp_send_message_to_player(id: usize, typ: MessageComponent, msg: &str) -> DelayHandler {
+    access::player_meta(id).send_message(typ, msg)
 }
 
 pub fn temp_update_player_message(id: usize, typ: MessageComponent, msg: &str) {
     access::player_meta(id).update_message(typ, msg);
 }
 
-pub fn temp_send_blocking_message(id: usize, msg: &str, ms_speed: u64) -> DelayHandler {
-    access::player_meta(id).send_blocking_message(msg, ms_speed)
+pub fn temp_send_blocking_message(id: usize, msg: &str) -> DelayHandler {
+    access::player_meta(id).send_blocking_message(msg)
 }
 
 pub fn temp_add_short_message(id: usize, msg: &str) {
@@ -214,10 +214,10 @@ impl ReusableMessage {
         }
     }
 
-    pub fn set_general(&mut self, message: &str) {
+    pub fn set_general(&mut self, length: usize, message: &str) {
         self.general.clear();
         let fmt = if message.starts_with("§") {
-            indent_general(&text::auto_break(0, &message[2..]))
+            indent_general(&text::auto_break(0, length, &message[2..]))
         } else {
             indent_general(message)
         };
@@ -233,9 +233,10 @@ impl ReusableMessage {
         ret
     }
 
-    pub fn add_to_general(&mut self, mut message: String) {
+    pub fn add_to_general(&mut self, length: usize, mut message: String) {
+        // This might be redundant. Need to verify.
         if message.starts_with("§") {
-            message = text::auto_break(0, &message[2..]);
+            message = text::auto_break(0, length, &message[2..]);
         }
 
         if self.general.len() > 0 {

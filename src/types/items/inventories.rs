@@ -360,8 +360,7 @@ impl Inventory {
 
     fn equip_command() -> Command {
         Command {
-            name: String::from("e"),
-            input_desc: String::from("e #"),
+            input: String::from("e #"),
             output_desc: String::from("Equip item #."),
             run: Box::new(|args: &Vec<&str>, player: &PlayerMeta| {
                 if args.len() < 1 {
@@ -394,8 +393,7 @@ impl Inventory {
 
     fn use_command() -> Command {
         Command {
-            name: String::from("u"),
-            input_desc: String::from("u #"),
+            input: String::from("u #"),
             output_desc: String::from("Use item #."),
             run: Box::new(|args: &Vec<&str>, player: &PlayerMeta| {
                 if args.len() < 1 {

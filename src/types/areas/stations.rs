@@ -8,6 +8,7 @@ use crate::util::player_options::{Command, Dialogue, Response};
 use crate::*;
 
 use rand::{thread_rng, Rng};
+use parking_lot::RwLock;
 use parking_lot::Mutex;
 
 static ENTRANCE_TEXT: [&str; 5] = [
@@ -105,7 +106,7 @@ const STARTING_PRICE: u32 = 600;
 pub struct Station {
     area_title: String,
     area_num: usize,
-    entities: Mutex<Vec<Box<Entity>>>,
+    entities: RwLock<Vec<Box<Entity>>>,
     coordinates: (usize, usize, usize),
     connections: Mutex<Vec<(usize, usize, usize)>>,
     distance_south: usize,
@@ -134,7 +135,7 @@ impl Station {
             area_title: String::from("Travel Station"),
             area_num,
             coordinates,
-            entities: Mutex::new(Vec::new()),
+            entities: RwLock::new(Vec::new()),
             connections: Mutex::new(Vec::new()),
             distance_south,
             distance_north,
@@ -229,10 +230,10 @@ pub fn get_booklet_price(town_num: usize) -> u32 {
 
 /// Displays information to the user about buying what
 /// travel passes do.
-pub fn travel_pass_info(text: &'static str) -> Response {
+pub fn travel_pass_info(text: &str) -> Response {
     Response::action_only(text, |player| {
         let info = choose(&TRAVEL_PASS_INFO_TEXT);
-        player.send_blocking_message(info, TEXT_SPEED);
+        player.send_blocking_message(info);
     })
 }
 
@@ -247,7 +248,7 @@ pub fn pass_purchase_info(town_num: usize, text: &'static str) -> Response {
         ];
         let info = text::apply_replacements(info, &replacements);
 
-        player.send_blocking_message(&info, TEXT_SPEED);
+        player.send_blocking_message(&info);
     })
 }
 
@@ -286,8 +287,8 @@ pub fn _use_pass(player_id: usize, town_num: usize, south_dist: usize, north_dis
 /// the users input to determine where to them, and
 /// subsequently takes them there.
 fn use_pass_command(north_bound: usize, south_bound: usize) -> Command {
-    Command::manual_desc_no_next(
-        "goto", "goto #", "Go to town #.",
+    Command::action_only(
+        "goto #", "Go to town #.",
         move |args, player| {
             parse_use_pass_arguments(args, player, north_bound, south_bound)
                 .ok()
@@ -364,7 +365,7 @@ fn handle_use_pass(player: &PlayerMeta, new_coords: (usize, usize, usize)) {
             let next = new_area.get_dialogue(player);
             register_options(next);
             player.update_options();
-            player.send_blocking_message("∫0.3.∫0.3 .∫0.3 .∫0.3 .∫0.3 .", TEXT_SPEED);
+            player.send_blocking_message("∫0.3.∫0.3 .∫0.3 .∫0.3 .∫0.3 .");
         })
     });
 }
@@ -500,8 +501,7 @@ pub fn _purchase_pass(player_id: usize, town_num: usize, south_dist: usize, nort
 /// specify which town they would like to purchase a pass to.
 fn purchase_pass_command(town_num: usize, north_bound: usize, south_bound: usize) -> Command {
     Command {
-        name: String::from("buy"),
-        input_desc: String::from("buy #x #y"),
+        input: String::from("buy #x #y"),
         output_desc: String::from("Buy a pass for town #x with #y uses."),
         run: Box::new(move |args: &Vec<&str>, player: &PlayerMeta| {
             parse_purchase_pass_arguments(args, player, north_bound, south_bound)
@@ -613,7 +613,7 @@ fn confirm_purchase_pass(player: &PlayerMeta, price: u32, travel_to: usize, num_
     };
     register_options(Dialogue::confirm_action(player.get_player_id(), true, on_yes, on_no));
     player.update_options();
-    player.send_blocking_message(&text, TEXT_SPEED);
+    player.send_blocking_message(&text);
 }
 
 /// Verifies that the item is a passbook and, if so,

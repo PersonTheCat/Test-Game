@@ -55,8 +55,8 @@ impl Player {
         }
     }
 
-    pub fn send_message(&self, typ: MessageComponent, msg: &str, ms_speed: u64) -> DelayHandler {
-        self.metadata.send_message(typ, msg, ms_speed)
+    pub fn send_message(&self, typ: MessageComponent, msg: &str) -> DelayHandler {
+        self.metadata.send_message(typ, msg)
     }
 
     pub fn send_short_message(&self, msg: &str) {

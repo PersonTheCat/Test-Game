@@ -52,15 +52,15 @@ pub fn generate_text(text: &[&str], replacements: &[(&str, String)]) -> String {
 /// where `indent` is the number of spaces to insert after
 /// each break. This is called automatically for most
 /// game text that starts with `§`.
-pub fn auto_break(indent: u8, text: &str) -> String {
+pub fn auto_break(indent: u8, length: usize, text: &str) -> String {
     let mut chars: Vec<char> = text.chars().collect();
-    if chars.len() <= LINE_LENGTH {
+    if chars.len() <= length as usize {
         return text.to_string();
     }
 
     let mut start_at = 0;
-    while start_at <= chars.len() - LINE_LENGTH {
-        let end = end_of_line(start_at, &chars);
+    while start_at <= chars.len() - length {
+        let end = end_of_line(start_at, length, &chars);
         chars[end] = '\n';
         for _ in 0..indent {
             chars.insert(end + 1, ' ');
@@ -70,8 +70,8 @@ pub fn auto_break(indent: u8, text: &str) -> String {
     chars.into_iter().collect()
 }
 
-fn end_of_line(start_at: usize, text: &Vec<char>) -> usize {
-    let max_line = &text[start_at..(start_at + LINE_LENGTH)];
+fn end_of_line(start_at: usize, length: usize, text: &Vec<char>) -> usize {
+    let max_line = &text[start_at..(start_at + length)];
     let mut final_space = max_line.len();
 
     // Iterate forward in case of an early new line.

@@ -172,7 +172,7 @@ impl Town {
     /// Generates a formatted map for the player.
     pub fn get_map(&self, player: &PlayerMeta) -> String {
         let mut ret = String::new();
-        let horizontal_border = "-".repeat((W * 3) + 1);;
+        let horizontal_border = "-".repeat((W * 3) + 2);;
 
         ret += &horizontal_border;
         ret += "\n";

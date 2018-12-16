@@ -1,6 +1,7 @@
 use crate::traits::{Area, Entity};
 use crate::types::classes::Class;
 
+use parking_lot::RwLock;
 use parking_lot::Mutex;
 
 #[derive(EntityHolder, AreaTools)]
@@ -8,7 +9,7 @@ pub struct BossRoom {
     entrance_message: String,
     area_title: String,
     area_num: usize,
-    entities: Mutex<Vec<Box<Entity>>>,
+    entities: RwLock<Vec<Box<Entity>>>,
     coordinates: (usize, usize, usize),
     connections: Mutex<Vec<(usize, usize, usize)>>,
 }
@@ -22,7 +23,7 @@ impl BossRoom {
             area_title: String::from("Test Boss Area"),
             area_num,
             coordinates,
-            entities: Mutex::new(Vec::new()),
+            entities: RwLock::new(Vec::new()),
             connections: Mutex::new(Vec::new()),
         })
     }

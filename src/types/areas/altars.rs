@@ -4,8 +4,10 @@ use crate::traits::{Area, Entity};
 use crate::types::classes::Class;
 use crate::types::effects::Effect;
 use crate::util::access;
+
 use crate::util::player_options::Response;
 
+use parking_lot::RwLock;
 use parking_lot::Mutex;
 
 #[derive(EntityHolder, AreaTools)]
@@ -14,7 +16,7 @@ pub struct Altar {
     entrance_message: String,
     pub area_title: String,
     pub area_num: usize,
-    pub entities: Mutex<Vec<Box<Entity>>>,
+    pub entities: RwLock<Vec<Box<Entity>>>,
     coordinates: (usize, usize, usize),
     connections: Mutex<Vec<(usize, usize, usize)>>,
 }
@@ -30,7 +32,7 @@ impl Altar {
             area_title: String::from("Altar"),
             area_num,
             coordinates,
-            entities: Mutex::new(Vec::new()),
+            entities: RwLock::new(Vec::new()),
             connections: Mutex::new(Vec::new()),
         })
     }

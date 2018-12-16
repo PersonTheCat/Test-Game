@@ -54,6 +54,8 @@ pub struct PlayerMeta {
     class: Atomic<Class>,
     active: Atomic<bool>,
     reusable_message: Mutex<ReusableMessage>,
+    text_speed: Atomic<u64>,
+    text_length: Atomic<usize>
 }
 
 impl PlayerMeta {
@@ -64,9 +66,9 @@ impl PlayerMeta {
 
     /// Standard dialogue to the player. Returns a DelayHandler
     /// for spawning new events upon completion.
-    pub fn send_message(&self, typ: MessageComponent, msg: &str, ms_speed: u64) -> DelayHandler {
+    pub fn send_message(&self, typ: MessageComponent, msg: &str) -> DelayHandler {
         self.update_message(typ, msg);
-        self._send(ms_speed)
+        self._send(self.get_text_speed())
     }
 
     /// Sends an immediate message. Currently allows up to 3
@@ -81,14 +83,14 @@ impl PlayerMeta {
     /// Variant of send_message() that replaces the player's
     /// dialogue with Dialogue::empty(), temporarily
     /// preventing them from registering any inputs.
-    pub fn send_blocking_message(&self, msg: &str, ms_speed: u64) -> DelayHandler {
+    pub fn send_blocking_message(&self, msg: &str) -> DelayHandler {
         let player_id = self.get_player_id();
         let dialogues = remove_all_options(player_id);
         let empty = Dialogue::empty(player_id);
         let empty_id = empty.id;
         register_options(empty);
 
-        let handler = self.send_message(General, msg, ms_speed);
+        let handler = self.send_message(General, msg);
         handler.clone().then(move || {
             delete_options(empty_id);
             for dialogue in dialogues {
@@ -101,7 +103,8 @@ impl PlayerMeta {
 
     pub fn send_current_options(&self) {
         let options_text = get_options_text(self.get_player_id());
-        self.send_message(Options, &options_text, 0);
+        self.update_message(Options, &options_text);
+        self._send(0);
     }
 
     pub fn update_options(&self) {
@@ -130,7 +133,7 @@ impl PlayerMeta {
         let mut reusable_message = self.reusable_message.lock();
         match typ {
             HealthBar => reusable_message.health_bar = msg.to_string(),
-            General => reusable_message.set_general(msg),
+            General => reusable_message.set_general(self.get_text_length(), msg),
             Options => reusable_message.options = msg.to_string(),
         };
     }
@@ -140,11 +143,11 @@ impl PlayerMeta {
     /// the text.
     pub fn add_short_message(&self, msg: &str) {
         let fmt = if msg.starts_with("§") {
-            format!("* {}\n", text::auto_break(2, &msg[2..]))
+            format!("* {}\n", text::auto_break(2, self.get_text_length(), &msg[2..]))
         } else {
             format!("* {}\n", msg)
         };
-        self.reusable_message.lock().add_to_general(fmt);
+        self.reusable_message.lock().add_to_general(self.get_text_length(), fmt);
     }
 
     fn _send(&self, ms_speed: u64) -> DelayHandler {
@@ -313,6 +316,22 @@ impl PlayerMeta {
     pub fn is_active(&self) -> bool {
         self.active.load(SeqCst)
     }
+
+    pub fn set_text_speed(&self, val: u64) {
+        self.text_speed.store(val, SeqCst);
+    }
+
+    pub fn get_text_speed(&self) -> u64 {
+        self.text_speed.load(SeqCst)
+    }
+
+    pub fn set_text_length(&self, val: usize) {
+        self.text_length.store(val, SeqCst);
+    }
+
+    pub fn get_text_length(&self) -> usize {
+        self.text_length.load(SeqCst)
+    }
 }
 
 pub fn new_player_event(message: &GameMessage) {
@@ -327,12 +346,15 @@ pub fn new_player_event(message: &GameMessage) {
         class: Atomic::new(Melee),
         active: Atomic::new(true),
         reusable_message: Mutex::new(ReusableMessage::new()),
+        text_speed: Atomic::new(TEXT_SPEED),
+        text_length: Atomic::new(LINE_LENGTH)
     };
-
-    register_options(text::new_player_name(new.player_id));
-    new.update_options();
-    new.send_blocking_message(&text::rand_new_sender(), TEXT_SPEED);
+    let id = new.player_id;
+    register_options(text::new_player_name(id));
     register_player_meta(new);
+    let registered = access::player_meta(id);
+    registered.update_options();
+    registered.send_blocking_message(&text::rand_new_sender());
 }
 
 pub fn register_player_meta(meta: PlayerMeta) {

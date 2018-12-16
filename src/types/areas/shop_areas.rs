@@ -5,6 +5,7 @@ use crate::types::entities::npcs::{Shopkeeper, NPC};
 use crate::*;
 
 use lazy_static::lazy_static;
+use parking_lot::RwLock;
 use parking_lot::Mutex;
 use regex::Regex;
 
@@ -42,7 +43,7 @@ pub struct Pub {
     owner_title: String,
     area_title: String,
     area_num: usize,
-    entities: Mutex<Vec<Box<Entity>>>,
+    entities: RwLock<Vec<Box<Entity>>>,
     location_order: Vec<u8>,
     coordinates: (usize, usize, usize),
     connections: Mutex<Vec<(usize, usize, usize)>>,
@@ -50,8 +51,10 @@ pub struct Pub {
 
 impl Pub {
     pub fn new(class: Class, area_num: usize, coordinates: (usize, usize, usize)) -> Box<Area> {
+        let keeper = Shopkeeper::new();
+        let owner_name = keeper.get_name().clone();
         let mut entities: Vec<Box<Entity>> = Vec::new();
-        entities.push(Box::new(Shopkeeper::new()));
+        entities.push(Box::new(keeper));
         entities.push(Box::new(NPC::new(class, coordinates)));
         entities.push(Box::new(NPC::with_intro(
             String::from(
@@ -64,12 +67,12 @@ impl Pub {
         )));
 
         Box::new(Pub {
-            owner_name: text::rand_npc_name(),
+            owner_name,
             owner_title: String::from("Shop Keeper"),
             area_title: String::from("Pub"),
             area_num,
             coordinates,
-            entities: Mutex::new(entities),
+            entities: RwLock::new(entities),
             location_order: random_pub_location_order(2),
             connections: Mutex::new(Vec::new()),
         })
@@ -86,7 +89,7 @@ impl Area for Pub {
     }
 
     fn get_entrance_message(&self) -> Option<String> {
-        let entities = self.entities.lock();
+        let entities = self.entities.read();
         let mut index = 0;
         let mut text = String::from("§"); // Start in auto-break mode.
         text += *choose(&WALK_IN);
@@ -114,7 +117,7 @@ impl Area for Pub {
     }
 
     fn get_title(&self) -> String {
-        self.area_title.clone()
+        format!("{}'s Pub", self.owner_name)
     }
 }
 

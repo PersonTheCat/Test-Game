@@ -4,13 +4,14 @@ use crate::types::classes::Class;
 use crate::util::access;
 use crate::util::player_options::Response;
 
+use parking_lot::RwLock;
 use parking_lot::Mutex;
 
 #[derive(EntityHolder, AreaTools)]
 pub struct Gate {
     area_num: usize,
     coordinates: (usize, usize, usize),
-    entities: Mutex<Vec<Box<Entity>>>,
+    entities: RwLock<Vec<Box<Entity>>>,
     connections: Mutex<Vec<(usize, usize, usize)>>,
 }
 
@@ -19,7 +20,7 @@ impl Gate {
         Box::new(Gate {
             area_num,
             coordinates,
-            entities: Mutex::new(Vec::new()),
+            entities: RwLock::new(Vec::new()),
             connections: Mutex::new(Vec::new()),
         })
     }

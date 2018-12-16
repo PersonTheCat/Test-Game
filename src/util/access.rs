@@ -32,9 +32,16 @@ pub struct EntityAccessor {
 /// that all pointers to them stay in scope. This is why
 /// callbacks are needed for this function; however, it's
 /// possible that this will change in the future.
-pub fn entity<T, F>(accessor: EntityAccessor, callback: F) -> Option<T>
+pub fn entity<T, F>(mut accessor: EntityAccessor, callback: F) -> Option<T>
     where F: FnOnce(&Entity) -> T
 {
+    // Refresh the accessor for players. Other entities won't move,
+    // but should probably also be converted to reference counters
+    // at some point in the future, as well.
+    if accessor.is_player {
+        accessor = player_meta(accessor.entity_id).get_accessor();
+    }
+
     area(accessor.coordinates, |area| {
         area.borrow_entity_lock().iter()
             .find(|e| e.get_id() == accessor.entity_id)
@@ -112,11 +119,8 @@ pub fn area<F, T>(coords: (usize, usize, usize), callback: F) -> Option<T>
 {
     // Need to make sure the data isn't moved.
     // Difficult to do functionally.
-    match towns::TOWN_REGISTRY.read().get(&coords.0) {
-        Some(t) => match &t.get_areas()[coords.1][coords.2] {
-            Some(ref a) => Some(callback(&**a)),
-            None => None
-        },
+    match &town(coords.0).get_areas()[coords.1][coords.2] {
+        Some(ref a) => Some(callback(&**a)),
         None => None
     }
 }

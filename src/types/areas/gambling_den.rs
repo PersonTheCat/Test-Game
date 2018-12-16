@@ -5,6 +5,7 @@ use crate::util::access;
 use crate::util::player_options::Response;
 use crate::*;
 
+use parking_lot::RwLock;
 use parking_lot::Mutex;
 use rand::random;
 
@@ -20,7 +21,7 @@ static NOT_ENOUGH_MONEY: [&str; 1] = ["no money dialogue"];
 #[derive(EntityHolder, AreaTools)]
 pub struct GamblingDen {
     area_num: usize,
-    entities: Mutex<Vec<Box<Entity>>>,
+    entities: RwLock<Vec<Box<Entity>>>,
     coordinates: (usize, usize, usize),
     connections: Mutex<Vec<(usize, usize, usize)>>,
 }
@@ -30,7 +31,7 @@ impl GamblingDen {
         Box::new(GamblingDen {
             area_num,
             coordinates,
-            entities: Mutex::new(Vec::new()),
+            entities: RwLock::new(Vec::new()),
             connections: Mutex::new(Vec::new()),
         })
     }
