@@ -885,12 +885,12 @@ fn post_run(player: &PlayerMeta, current_dialogue: &Dialogue, next: &DialogueOpt
             // Ensure that the current dialogue also originates
             // from the player's area. Prevents some duplicate
             // dialogues from generating.
-            if current_dialogue.is_primary {
+//            if current_dialogue.is_primary {
                 Some(Dialogue::from_area(player))
-            } else {
-                player.send_current_options(); // Refresh.
-                None // To-do: log this information.
-            }
+//            } else {
+//                player.send_current_options(); // Refresh.
+//                None // To-do: log this information.
+//            }
         },
         // The author indicated that the current dialogue
         // should cease to exist upon executing this function.

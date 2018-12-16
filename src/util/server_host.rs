@@ -100,7 +100,7 @@ fn start_server(listener: TcpListener, server_tx: Sender<MessageData>, server_rx
         if let Ok(msg) = server_rx.try_recv() {
             match handle_incoming_message(msg, &mut visitors, &mut clients, &mut tokens, &server_tx, &game_tx) {
                 Ok(_o) => (), //println!("Ok: {}", o),
-                Err(e) => println!("Err: {}", e),
+                Err(_) => ()//println!("Err: {}", e),
             };
         }
         sleep();
